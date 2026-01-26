@@ -598,11 +598,9 @@
     function UtilitiesScript(){
 
         function waitForDrawerAndInjectEnergy() {
-            // 1. SELECTOR: The container OGame uses for the tech drawer
-            // In most views, this is #technology_details or #detail
+            
             const drawerID = "technologydetails";
 
-            // 2. THE OBSERVER LOGIC
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     // Check if nodes were added
@@ -618,9 +616,7 @@
                     }
                 });
             });
-
-            // 3. START WATCHING
-            // We watch the 'body' or a specific main container for added children
+            
             const targetNode = document.body;
             observer.observe(targetNode, { childList: true, subtree: true });
         }
