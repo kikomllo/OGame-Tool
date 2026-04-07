@@ -364,7 +364,7 @@
 
             .expo-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 
-            .compact-input { width: 40px; height: 22px; padding-left: 4px; padding-right: 4px; position: relative; }
+            .compact-input { width: 40px !important; height: 22px; padding-left: 4px; padding-right: 4px; position: relative; }
 
             /* --- GLOBAL OGAME OVERRIDES --- */
 
