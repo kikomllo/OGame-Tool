@@ -32,6 +32,7 @@
     const FLEET_BTN_ID = "customExpoBtn";
     const FLEET_SECBTN_ID = "customExpoSecBtn";
     const PANEL_ID = "customPanel";
+    
     const rowCount = 6;
     let audioCtx = null;
     let beeped = false;
@@ -182,14 +183,14 @@
         }
     
         async function normalAlert(){
-            playBeep(1000); await gameWindow.sleep(100);
-            playBeep(1200); await gameWindow.sleep(100);
-            playBeep(1000); await gameWindow.sleep(100);
+            playBeep(1000); await sleep(100);
+            playBeep(1200); await sleep(100);
+            playBeep(1000); await sleep(100);
             playBeep(1600);
         }
     
         async function attackAlert(){
-            playBeep(1000); await gameWindow.sleep(500);
+            playBeep(1000); await sleep(500);
         }
     
         function checkFleetEvents() {
@@ -218,12 +219,11 @@
     }
     
     // --- RESOURCES SCRIPT ---
-    // --- RESOURCES SCRIPT ---
     function ResourcesScript() {
         
         let empEconomy = GameState.empireData;
 
-        // --- NEW: THE PASSIVE MINE SCRAPER ---
+        // --- THE PASSIVE MINE SCRAPER ---
         function scrapeMineLevels() {
             if (!isPage('component=supplies')) return;
 
@@ -231,7 +231,6 @@
             if (!metaPlanet) return;
             const currentPlanetID = metaPlanet.content;
 
-            // Wait for the game to render the building levels
             waitForElement('.technology[data-technology="1"] .level').then(() => {
                 let m = document.querySelector('.technology[data-technology="1"] .level');
                 let c = document.querySelector('.technology[data-technology="2"] .level');
@@ -536,6 +535,7 @@
             const aBtn = e.target.closest("#" + FLEET_SECBTN_ID);
             const saveBtn = e.target.closest("#expoSave");
             const panel = document.getElementById(PANEL_ID);
+            const shipIcon = e.target.closest(".clickable-ship");
     
             if (a) {
                 e.preventDefault(); e.stopImmediatePropagation();
@@ -548,6 +548,30 @@
             if (saveBtn) {
                 e.preventDefault(); e.stopImmediatePropagation();
                 saveChanges();
+            }
+
+            if (shipIcon) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                let shipID = shipIcon.getAttribute("data-ship-id");
+                let inputID = shipIcon.getAttribute("data-input-id");
+                let input = document.querySelector(`input[data-id="${inputID}"]`);
+
+                if (input && gameWindow.fleetDispatcher) {
+                    let currentExpos = gameWindow.fleetDispatcher.expeditionCount || 0;
+                    let availableExpos = gameWindow.fleetDispatcher.maxExpeditionCount || 1 - currentExpos;
+                    
+                    availableExpos = Math.max(1, availableExpos); 
+
+                    let availableShips = 0;
+                    if (gameWindow.fleetDispatcher.shipsData?.[shipID]) {
+                        availableShips = gameWindow.fleetDispatcher.shipsData[shipID].number;
+                    } else {
+                        const shipVisual = document.querySelector(`li[data-technology="${shipID}"] .amount`);
+                        if (shipVisual && shipVisual.dataset.value) availableShips = parseInt(shipVisual.dataset.value, 10);
+                    }
+
+                    input.value = Math.floor(availableShips / availableExpos);
+                }
             }
     
             if (panel && panel.style.display === 'block') {
@@ -585,7 +609,9 @@
             spanBtn.className = "menu_icon";
     
             const aBtn = document.createElement("a"); aBtn.className = "tooltipRight js_hideTipOnMobile ";
-            const divBtn = document.createElement("div"); divBtn.className = "menuImage defense";
+            const divBtn = document.createElement("div"); divBtn.className = "menuImage fleet1 ipiHintable";
+            divBtn.data = "Send Expos!";
+            
             spanBtn.appendChild(aBtn); aBtn.appendChild(divBtn); li.appendChild(spanBtn);
     
             const a = document.createElement("a");
@@ -732,15 +758,14 @@
     
         // --- SEND MULTIPLE EXPOS ---
         async function sendExpos(){
-            let currentExposSlots = gameWindow.fleetDispatcher.maxExpeditionCount - gameWindow.fleetDispatcher.expeditionCount;
-            let currentFleetSlots = gameWindow.fleetDispatcher.maxFleetCount - gameWindow.fleetDispatcher.fleetCount;
+            let currentExposSlots = gameWindow.fleetDispatcher.maxExpeditionCount || 1 - gameWindow.fleetDispatcher.expeditionCount;
+            let currentFleetSlots = gameWindow.fleetDispatcher.maxFleetCount || 1 - gameWindow.fleetDispatcher.fleetCount;
             let maxSend = Math.min(currentFleetSlots, currentExposSlots);
     
             if (maxSend <= 0) {
                 console.log("No fleet or expedition slots available!");
                 return;
             }
-    
     
             for (let i = 0; i < maxSend; i++){
                 let success = await sendExpoAPI();
@@ -776,7 +801,7 @@
             for (let i = 0, counter = 0; i < rowCount; i++) {
                 rowsHTML += `
                     <li class="expo-row">
-                        <technology-icon class="tooltip" ${shipNames[counter][0]}="" regular="" style="height: 25px; width: 25px; margin-top: 5px"></technology-icon>
+                        <technology-icon class="tooltip clickable-ship" data-ship-id="${shipNames[counter][1]}" data-input-id="${counter}" ${shipNames[counter][0]}="" regular="" style="height: 25px; width: 25px; margin-top: 5px; cursor: pointer;"></technology-icon>
                         <label class="labeled-textfield compact-input hideNumberSpin">
                             <input type="number" data-id="${counter}" placeholder="0" value="${(currConfig && currConfig[counter]) ? currConfig[counter] : ""}">
                         </label>
@@ -786,7 +811,7 @@
                         <label class="labeled-textfield compact-input hideNumberSpin ">
                             <input type="number" data-id="${counter}" placeholder="0" value="${(currConfig && currConfig[counter]) ? currConfig[counter] : ""}">
                         </label>
-                        <technology-icon class="tooltip" ${shipNames[counter][0]}="" regular="" style="height: 25px; width: 25px; margin-top: 5px"></technology-icon>
+                        <technology-icon class="tooltip clickable-ship" data-ship-id="${shipNames[counter][1]}" data-input-id="${counter}" ${shipNames[counter][0]}="" regular="" style="height: 25px; width: 25px; margin-top: 5px; cursor: pointer;"></technology-icon>
                     </li>
                 `;
                 counter++;
@@ -821,20 +846,24 @@
     
         function setupPlanetList(){
             let planetListContainer = document.querySelector("#planetList");
-            if (planetListContainer) {
+            
+            if (planetListContainer && !planetListContainer.classList.contains("custom-ready")) {
                 planetListContainer.classList.add("custom-ready");
             }
-    
+
             let planetsNames = document.querySelectorAll(".planet-name");
             planetsNames.forEach((planet_name) => {
-                let sibling = planet_name.previousElementSibling;
-                if (sibling) sibling.append(planet_name);
-    
                 let parentPlanet = planet_name.closest('.smallplanet');
                 if (!parentPlanet) return;
                 let pID = parentPlanet.id.split("-")[1];
-    
-                if (!UINodes[pID]){
+
+                if (!document.getElementById("resTable-" + pID)){
+                    
+                    let sibling = planet_name.previousElementSibling;
+                    if (sibling && !sibling.classList.contains("custom-mines-table") && !sibling.classList.contains("custom-res-table")) {
+                        sibling.append(planet_name);
+                    }
+
                     UINodes[pID] = { res: null, mines: null }; 
 
                     let minesContainer = document.createElement("div");
@@ -857,9 +886,10 @@
                         <span class="res-d">0</span>
                     `;
 
-                    if (sibling) {
-                        sibling.append(minesContainer);
-                        sibling.append(resContainer);
+                    let targetWrapper = planet_name.parentElement;
+                    if (targetWrapper) {
+                        targetWrapper.append(minesContainer);
+                        targetWrapper.append(resContainer);
                     }
                 }
             });
@@ -915,9 +945,12 @@
     
         function updateValues(){
             let input = document.querySelector('#build_amount');
-            let bonus = document.querySelector(".bonus");
-            if (input && bonus) {
-                bonus.textContent = "(+" + bonus.dataset.value * input.value + ")";
+            let energyEle = document.querySelector(".energy_production");
+            if (energyEle){
+                let bonus = document.querySelector(".energy_production").children[1].children[0];
+                if (input && bonus) {
+                    bonus.textContent = "(+" + bonus.dataset.value * input.value + ")";
+                }
             }
         }
     
@@ -932,9 +965,10 @@
             document.addEventListener('input', function(event){ updateValues(); });
         }
     
-        setupPlanetList();
+        setupPlanetList()
         waitForDrawerAndInjectEnergy();
         reloadPage();
+        MasterClockQueue.push(setupPlanetList);
     }
     
     // --- INITIALIZE ALL MODULES ---
