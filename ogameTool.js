@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.14
+// @version      1.15
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -104,7 +104,7 @@
     }
     
     function isPage(URLpart){
-        const URL = gameWindow.location.href; // gameWindow mantido apenas para ler o href nativo
+        const URL = gameWindow.location.href;
         if (!URL) return;
         return URL.includes(URLpart);
     }
@@ -296,12 +296,11 @@
                     const currentPlanetID = metaPlanet.content;
                     const types = ["metal", "crystal", "deuterium"];
 
-                    // Keep existing mine data if it exists, otherwise start fresh
                     let existingMines = empEconomy[currentPlanetID]?.mines || null;
 
                     let planetEconomy = {
                         timestamp: Date.now(),
-                        mines: existingMines, // Preserve the scraped mines
+                        mines: existingMines,
                         metal: getValuesByType(data, types[0]),
                         crystal: getValuesByType(data, types[1]),
                         deuterium: getValuesByType(data, types[2])
@@ -348,7 +347,7 @@
                 let pData = empEconomy[pID];
                 let ui = UINodes[pID];
 
-                // Failsafe: Ensure both DOM nodes exist before touching them
+                // FAILSAFE: ENSURE BOTH DOM NODES EXIST BEFORE TOUCHING THEM
                 if (!ui || !ui.res || !ui.mines) continue; 
                 
                 if (pData.timestamp) {
@@ -558,8 +557,8 @@
 
                 if (input && gameWindow.fleetDispatcher) {
                     let currentExpos = gameWindow.fleetDispatcher.expeditionCount || 0;
-                    let availableExpos = gameWindow.fleetDispatcher.maxExpeditionCount || 1 - currentExpos;
-                    
+                    let availableExpos = gameWindow.fleetDispatcher.maxExpeditionCount - currentExpos || 1 ;
+
                     availableExpos = Math.max(1, availableExpos); 
 
                     let availableShips = 0;
@@ -843,7 +842,6 @@
     
     // --- UTILITIES SCRIPT ---
     function UtilitiesScript(){
-    
         function setupPlanetList(){
             let planetListContainer = document.querySelector("#planetList");
             
@@ -858,7 +856,6 @@
                 let pID = parentPlanet.id.split("-")[1];
 
                 if (!document.getElementById("resTable-" + pID)){
-                    
                     let sibling = planet_name.previousElementSibling;
                     if (sibling && !sibling.classList.contains("custom-mines-table") && !sibling.classList.contains("custom-res-table")) {
                         sibling.append(planet_name);
@@ -972,7 +969,7 @@
     }
     
     // --- INITIALIZE ALL MODULES ---
-    GlobalStyle(); 
+    GlobalStyle();
     
     function StartMasterClock() {
         setInterval(() => {
@@ -995,7 +992,7 @@
         FleetScript();
         UtilitiesScript();
         
-        StartMasterClock(); 
+        StartMasterClock();
     }
     
     if (document.readyState === 'loading') {
