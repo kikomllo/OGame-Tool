@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.17
+// @version      1.18
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -41,9 +41,20 @@
             shadowEndTime: 0,
             shadowNextAuction: 0,
             currentSum: "0",
-            nextFetch: 0
+            nextFetch: 0,
+            hasBeeped: false // Persistent Alarm Memory
         }
     };
+
+    // --- SHIP MAPPING ---
+    const shipNames = [
+        ["fighterlight", 204], ["fighterheavy", 205],
+        ["cruiser", 206], ["battleship", 207],
+        ["interceptor", 215], ["bomber", 211],
+        ["destroyer", 213], ["reaper", 218],
+        ["explorer", 219], ["transportersmall", 202],
+        ["transporterlarge", 203], ["espionageprobe", 210]
+    ];
 
     // --- MASTER CLOCK QUEUE ---
     const MasterClockQueue = [];
@@ -64,23 +75,19 @@
         localStorage.setItem("expoFleet", "");
     }
 
-    const shipNames = [
-        ["fighterlight", 204], ["fighterheavy", 205],
-        ["cruiser", 206], ["battleship", 207],
-        ["interceptor", 215], ["bomber", 211],
-        ["destroyer", 213], ["reaper", 218],
-        ["explorer", 219], ["transportersmall", 202],
-        ["transporterlarge", 203], ["espionageprobe", 210]
-    ];
-
     // --- HELPERS ---
     const Helpers = {
         parseCleanJSON: function(rawText) {
-            if (rawText.includes("var MAX_")) {
-                const firstBracket = rawText.indexOf('{');
-                if (firstBracket !== -1) return JSON.parse(rawText.substring(firstBracket));
+            try {
+                if (rawText.includes("var MAX_")) {
+                    const firstBracket = rawText.indexOf('{');
+                    if (firstBracket !== -1) return JSON.parse(rawText.substring(firstBracket));
+                }
+                return JSON.parse(rawText);
+            } catch (e) {
+                console.error("[-] WARNING: Server returned invalid format (HTML/ERROR). Reason: ", e);
+                return { success: false, error: "Invalid Server Response" }; // Prevents JSON crash
             }
-            return JSON.parse(rawText);
         },
 
         compactNumber: new Intl.NumberFormat('en-US', {
@@ -181,25 +188,25 @@
         document.addEventListener('keydown', unlockAudio);
         initAudioContext();
 
-        function notifyUser(urgent = false) {
+        function notifyUser(urgent = false, message = null) {
             if (!("Notification" in gameWindow)) {
                 console.error("[-] WARNING: This browser does not support desktop notification");
                 return;
             }
             if (Notification.permission === "granted") {
-                createNotification(urgent);
+                createNotification(urgent, message);
             } else if (Notification.permission !== "denied") {
                 Notification.requestPermission().then((permission) => {
                     if (permission === "granted") {
-                        createNotification(urgent);
+                        createNotification(urgent, message);
                     }
                 });
             }
         }
 
-        function createNotification(urgent) {
-            const notif = new Notification((urgent) ? "ATTACK!!!!!!" : "Fleet Timer Out!", {
-                body: (urgent) ? "YOU ARE BEING ATTACKED!!!!" : "Your fleet has arrived!",
+        function createNotification(urgent, message = null) {
+            const notif = new Notification((urgent) ? "ATTACK!!!!!!" : (message ? "OGame Info" : "Fleet Timer Out!"), {
+                body: (urgent) ? "YOU ARE BEING ATTACKED!!!!" : (message ? message : "Your fleet has arrived!"),
                 icon: "https://cdn-icons-png.flaticon.com/512/1827/1827347.png",
                 requireInteraction: false
             });
@@ -242,6 +249,12 @@
             playBeep(1000);
         }
 
+        async function auctionAlert(){
+            playBeep(600); await Helpers.sleep(150);
+            playBeep(800); await Helpers.sleep(150);
+            playBeep(1200);
+        }
+
         function checkFleetEvents() {
             const flexiblePattern = /^(?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s)?$/;
             let timerElement = document.querySelector("#tempcounter");
@@ -269,7 +282,26 @@
             } else beeped = false;
         }
 
+        function checkAuctionEvents() {
+            if (GameState.auction.shadowEndTime > 0 || GameState.auction.timeText === "Aprox. 5m") {
+                if (!GameState.auction.hasBeeped) {
+                    auctionAlert();
+                    notifyUser(false, "Auction will end in aprox. 5min");
+                    GameState.auction.hasBeeped = true;
+                    localStorage.setItem("AuctionState", JSON.stringify(GameState.auction));
+                }
+            } else {
+                if (!GameState.auction.timeText === "Aprox. 5m" && GameState.auction.shadowEndTime === 0) {
+                    if (GameState.auction.hasBeeped) {
+                        GameState.auction.hasBeeped = false;
+                        localStorage.setItem("AuctionState", JSON.stringify(GameState.auction));
+                    }
+                }
+            }
+        }
+
         MasterClockQueue.push(checkFleetEvents);
+        MasterClockQueue.push(checkAuctionEvents);
     }
 
     // --- RESOURCES SCRIPT ---
@@ -279,7 +311,7 @@
         let hasScrapedThisVisit = false;
 
         function scrapeMineLevels() {
-            if (!Helpers.isPage('component=supplies')) {
+            if (!Helpers.isPage('supplies')) {
                 hasScrapedThisVisit = false;
                 return;
             }
@@ -305,7 +337,7 @@
                     };
 
                     localStorage.setItem("EmpireEconomy", JSON.stringify(empEconomy));
-                    console.log(`[Scraper] Mine levels saved for planet ${currentPlanetID}`);
+                    console.log(`[.] INFO: [Scraper] Mine levels saved for planet ${currentPlanetID}`);
                 }
             });
 
@@ -370,7 +402,7 @@
                     empEconomy[currentPlanetID] = planetEconomy;
                     localStorage.setItem("EmpireEconomy", JSON.stringify(empEconomy));
                 })
-                .catch(err => console.error("[!] ERROR: Resource fetch. Reason:", err));
+                .catch(err => console.error("[!] ERROR: Resource fetch. Reason: ", err));
         }
 
         function localResourceTick() {
@@ -600,6 +632,8 @@
 
     // --- FLEETSCRIPT ---
     function FleetScript(){
+        let abortExpos = false;
+
         document.addEventListener('focusin', (e) => {
             if (e.target && e.target.matches('.compact-input input')) e.target.select();
         });
@@ -618,9 +652,14 @@
             if (aBtn) {
                 e.preventDefault(); e.stopImmediatePropagation();
                 
-                if (aBtn.dataset.sending === "true") return; 
-                aBtn.dataset.sending = "true";
+                if (aBtn.dataset.sending === "true") {
+                    abortExpos = true;
+                    aBtn.innerHTML = `<span style="color: #d43635; font-weight:bold;">A Abortar...</span>`;
+                    return; 
+                }
                 
+                abortExpos = false;
+                aBtn.dataset.sending = "true";
                 sendExpos(aBtn);
             }
             if (saveBtn) {
@@ -757,7 +796,7 @@
             }
 
             if (totalShipsAdded < totalShipsRequested) {
-                console.warn(`[!] Aborting: Missing ships. Requested ${totalShipsRequested}, but only found ${totalShipsAdded}.`);
+                console.warn(`[!] ABORTING: Missing ships. Requested ${totalShipsRequested}, but only found ${totalShipsAdded}.`);
                 return false;
             }
 
@@ -848,8 +887,13 @@
             }
 
             for (let i = 0; i < maxSend; i++){
+                if (abortExpos) {
+                    console.warn("[!] ABORT: Expo send aborted by User!");
+                    break; 
+                }
+
                 if (btnElement) {
-                    btnElement.innerHTML = `<div style="color: #ff9600; font-size: 11px; line-height: 27px; font-weight: bold; text-align: center; width: 100%; height: 100%; background: rgba(0,0,0,0.5); border-radius: 3px;">${i+1}/${maxSend}</div>`;
+                    btnElement.innerHTML = `<div style="color: #ff9600; font-size: 10px; line-height: 25px; font-weight: bold; text-align: center; width: 27px; height: 27px; background: rgba(0,0,0,0.5); border-radius: 3px;">${i+1}/${maxSend}</div>`;
                 }
 
                 let success = await sendExpoAPI();
@@ -924,7 +968,7 @@
         }
 
         function mainFleet(){
-            if (Helpers.isPage('component=fleetdispatch')) {
+            if (Helpers.isPage('fleetdispatch')) {
                 setTimeout(addUIElements, 500);
             }
         }
@@ -933,7 +977,6 @@
 
     // --- AUCTION SCRIPT ---
     function AuctionScript() {
-
         function createAuctionUI() {
             let container = document.getElementById("custom-auction-panel");
             if (!container) {
@@ -1118,7 +1161,7 @@
 
             function checkAutoReload() {
                 if (Date.now() >= nextReloadTime) {
-                    console.log("[Master Clock] A iniciar auto-reload de segurança...");
+                    console.log("[-] WARNING: [Master Clock] Starting safety auto-reload!");
                     location.reload();
                 }
             }
@@ -1193,14 +1236,13 @@
             }
         }
 
-        if(Helpers.isPage('component=shipyard') || Helpers.isPage('component=supplies')){
+        if(Helpers.isPage('shipyard') || Helpers.isPage('supplies')){
             document.addEventListener('input', function(event){ updateValues(); });
         }
 
-        setupPlanetList()
         waitForDrawerAndInjectValues();
         reloadPage();
-        MasterClockQueue.push(setupPlanetList);
+        MasterClockQueue.push(setupPlanetList); // RESTORED FOR UI PERSISTENCE
     }
 
     // --- KEYBINDS SCRIPT ---
@@ -1208,9 +1250,11 @@
 
         document.addEventListener('keydown', function(event) {
             const isTyping = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA';
+            const isAuction = Helpers.isPage('traderAuctioneer');
+            const isFleet = Helpers.isPage('fleetdispatch');
 
             // --- SEND EXPOS ---
-            if (event.key === Config.keybinds.sendExpos && Helpers.isPage('component=fleetdispatch') && !isTyping) {
+            if (event.key === Config.keybinds.sendExpos && isFleet && !isTyping) {
                 let sendExpoBtn = document.querySelector('#customExpoSecBtn');
                 if (sendExpoBtn) Helpers.simulateClick(sendExpoBtn);
             }
@@ -1224,48 +1268,48 @@
             }
 
             // --- AUCTION SCRIPT ---
-            if (event.key === Config.keybinds.clearBids && Helpers.isPage('component=traderAuctioneer') && !isTyping) {
+            if (event.key === Config.keybinds.clearBids && isAuction && !isTyping) {
                 const btns = document.querySelectorAll(".resourceAmount");
                 btns.forEach(btn => {
                     Helpers.typeValue(btn, 0);
                 });
             }
 
-            if (Config.keybinds.maxBids.includes(event.key) && Helpers.isPage('component=traderAuctioneer') && !isTyping) {
+            if (Config.keybinds.maxBids.includes(event.key) && isAuction && !isTyping) {
                 switch (event.key) {
                     case Config.keybinds.maxBids[0]: {
                         let btn = document.querySelector(".js_sliderMetalMax");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                     case Config.keybinds.maxBids[1]: {
                         let btn = document.querySelector(".js_sliderCrystalMax");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                     case Config.keybinds.maxBids[2]: {
                         let btn = document.querySelector(".js_sliderDeuteriumMax");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                 }
             }
 
-            if (Config.keybinds.smallBids.includes(event.key) && Helpers.isPage('component=traderAuctioneer') && !isTyping) {
+            if (Config.keybinds.smallBids.includes(event.key) && isAuction && !isTyping) {
                 switch (event.key) {
                     case Config.keybinds.smallBids[0]: {
                         let btn = document.querySelector(".js_sliderMetalMore");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                     case Config.keybinds.smallBids[1]: {
                         let btn = document.querySelector(".js_sliderCrystalMore");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                     case Config.keybinds.smallBids[2]: {
                         let btn = document.querySelector(".js_sliderDeuteriumMore");
-                        if (btn) btn.click();
+                        if (btn) Helpers.simulateClick(btn);
                         break;
                     }
                 }
@@ -1274,7 +1318,7 @@
 
         // --- UI PAINTER ---
         function renderKeybindHints() {
-            if (!Helpers.isPage('page=traderAuctioneer')) return;
+            if (!Helpers.isPage('traderAuctioneer')) return;
 
             const hints = [
                 { selector: ".js_sliderMetalMax", key: Config.keybinds.maxBids[0] },
@@ -1318,7 +1362,7 @@
             });
         }
 
-        MasterClockQueue.push(renderKeybindHints);
+        MasterClockQueue.push(renderKeybindHints); // RESTORED FOR UI PERSISTENCE
     }
 
     // --- INITIALIZE ALL MODULES ---
