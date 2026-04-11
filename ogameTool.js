@@ -1240,6 +1240,7 @@
             document.addEventListener('input', function(event){ updateValues(); });
         }
 
+        setupPlanetList();
         waitForDrawerAndInjectValues();
         reloadPage();
         MasterClockQueue.push(setupPlanetList); // RESTORED FOR UI PERSISTENCE
