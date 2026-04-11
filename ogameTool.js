@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.18
+// @version      1.23
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -26,6 +26,7 @@
             maxBids: ['w', 's', 'x'],
             smallBids: ['q', 'a', 'z'],
             clearBids: 'd',
+            refreshPage: 'r',
         }
     };
 
@@ -35,6 +36,12 @@
         resources: { metal: 0, crystal: 0, deuterium: 0, energy: 0 },
         fleet: { current: 0, max: 0, expos: 0, maxExpos: 0 },
         empireData: {},
+        settings: { 
+            sound_fleet: true, notify_fleet: true, 
+            sound_attack: true, notify_attack: true,
+            sound_auction: true, notify_auction: true,
+            volume: 0.5 
+        },
         auction: {
             active: false,
             timeText: "Unknown",
@@ -56,6 +63,11 @@
         ["transporterlarge", 203], ["espionageprobe", 210]
     ];
 
+    const muteElements = [
+        "sound_fleet", "sound_attack", "sound_auction",
+        "notify_fleet", "notify_attack", "notify_auction"
+    ];
+
     // --- MASTER CLOCK QUEUE ---
     const MasterClockQueue = [];
 
@@ -75,6 +87,171 @@
         localStorage.setItem("expoFleet", "");
     }
 
+    // --- CSS ---
+    const injectGlobalCSS = () => {
+        let css = `
+            /* --- EXPO PANEL CSS --- */
+            #customPanel {
+                position: absolute;
+                z-index: 99999;
+                background-color: #161b23EE; border: 1px solid #455266; color: white;
+                padding: 15px; width: auto; height: auto; border-radius: 4px;
+                box-shadow: 4px 4px 10px rgba(0,0,0,0.8); display: none;
+            }
+            #customPanel h3 {
+                margin-top: 0;
+                border-bottom: 1px solid #455266; padding-bottom: 5px;
+                text-align: center; color: #ff9600; font-size: 14px;
+            }
+            #expoTable { list-style: none; padding: 0; margin: 0; }
+            .expo-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+            .compact-input { width: 40px !important; height: 22px; padding-left: 4px; padding-right: 4px; position: relative; }
+
+            /* --- GLOBAL OGAME OVERRIDES --- */
+            .planetBarSpaceObjectHighlightContainer {
+                width: 23px !important;
+                height: 23px !important;
+                margin-left: 3.5px !important;
+                margin-right: 10px !important;
+            }
+            .planetBarSpaceObjectContainer {
+                justify-content: flex-start !important;
+                height: 20px !important;
+                margin-top: 10px !important;
+            }
+            .smallplanet {
+                height: 50px !important; 
+                width: 140px !important;
+                position: relative !important; 
+            }
+            .planetPic {
+                width: 30px !important;
+                height: 30px !important;
+                padding-right: 5px;
+            }
+            .planet-name {
+                margin-right: auto !important;
+                margin-left: 0px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                max-width: 60px !important;
+            }
+            .planet-koords { font-size: 9px !important; }
+            a.constructionIcon { top: 25px !important; right: 113px !important; }
+
+            #planetList:not(.custom-ready) {
+                opacity: 0 !important;
+                visibility: hidden !important;
+            }
+            #planetList.custom-ready {
+                opacity: 1 !important;
+                visibility: visible !important;
+                transition: opacity 0.15s ease-in;
+            }
+
+            /* --- CSS RESOURCES --- */
+            .my-resource-timer {
+                position: relative;
+                font-size: 9px;
+                margin-top: 13px;
+                pointer-events: none;
+            }
+            .custom-res-table {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                font-size: 9px;
+                line-height: 11px;
+                margin-left: auto !important;
+                margin-right: 5px !important;
+                pointer-events: none;
+            }
+            .res-m { color: #a4a4a4; font-weight: bold; }
+            .res-c { color: #2389d7; font-weight: bold; }
+            .res-d { color: #1fb37d; font-weight: bold; }
+
+            /* --- CSS MINES LVLS --- */
+            .custom-mines-table {
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+                width: 134px;
+                font-size: 7px;
+                position: absolute !important;
+                bottom: -22px !important;
+                left: 2px !important;
+                pointer-events: none;
+            }
+
+            /* --- CSS AD BLOCKER --- */
+            #bannerSkyscrapercomponent { display: none !important; }
+
+            /* --- CSS KEYBIND HINTS --- */
+            .custom-keybind-hint {
+                position: absolute;
+                top: -10px;
+                right: 5px;
+                background-color: #ff9600;
+                color: #161b23;
+                font-size: 8px;
+                font-weight: 900;
+                padding: 1px 4px;
+                border-radius: 10px;
+                pointer-events: none;
+                z-index: 999;
+                box-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+                text-transform: uppercase;
+            }
+
+            /* --- CSS ALERT SETTINGS ---*/
+            #custom-settings-panel {
+                background-color: #161b23EE; border: 1px solid #455266; color: #999;
+                padding: 10px; margin-left: 5px; margin-top: 5px; border-radius: 11px; width: 132px; height: 85px;
+                font-size: 9px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            }
+            #custom-settings-panel h4 { 
+                color: #ff9600; margin: 0 0 8px 0; text-align: center; 
+                font-size: 11px; border-bottom: 1px solid #455266; padding-bottom: 4px;
+            }
+            .setting-row { 
+                display: grid; grid-template-columns: 40px 1fr 1fr 1fr; 
+                align-items: center; margin-bottom: 6px; text-align: center;
+            }
+            .setting-row label { text-align: left; color: #8496b0; }
+            .ui-chip {
+                cursor: pointer; padding: 2px 0; border-radius: 2px;
+                transition: all 0.1s; user-select: none;
+            }
+            /* The Vol Stepper CSS */
+            .vol-row {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-top: 8px; padding-top: 6px; border-top: 1px dashed #344054;
+            }
+            .vol-btn {
+                background: #2b3441; border: 1px solid #455266; color: white;
+                cursor: pointer; width: 20px; height: 15px; line-height: 15px;
+                text-align: center; border-radius: 3px; font-weight: bold;
+                user-select: none;
+            }
+            .vol-btn:hover { background: #ff9600; border-color: #ff9600; color: black; }
+        `;
+
+        let style = document.createElement('style');
+        style.id = 'custom-style';
+        style.type = 'text/css';
+        style.innerHTML = css;
+
+        // Inject immediately into documentElement if head isn't ready
+        if (document.head) {
+            document.head.appendChild(style);
+        } else {
+            document.documentElement.appendChild(style);
+        }
+    };
+    
+    injectGlobalCSS();
+
     // --- HELPERS ---
     const Helpers = {
         parseCleanJSON: function(rawText) {
@@ -86,7 +263,7 @@
                 return JSON.parse(rawText);
             } catch (e) {
                 console.error("[-] WARNING: Server returned invalid format (HTML/ERROR). Reason: ", e);
-                return { success: false, error: "Invalid Server Response" }; // Prevents JSON crash
+                return { success: false, error: "Invalid Server Response" }; 
             }
         },
 
@@ -188,25 +365,27 @@
         document.addEventListener('keydown', unlockAudio);
         initAudioContext();
 
-        function notifyUser(urgent = false, message = null) {
+        function notifyUser(header = null, message = null) {
+            if (!message) return;
+
             if (!("Notification" in gameWindow)) {
                 console.error("[-] WARNING: This browser does not support desktop notification");
                 return;
             }
             if (Notification.permission === "granted") {
-                createNotification(urgent, message);
+                createNotification(header, message);
             } else if (Notification.permission !== "denied") {
                 Notification.requestPermission().then((permission) => {
                     if (permission === "granted") {
-                        createNotification(urgent, message);
+                        createNotification(header, message);
                     }
                 });
             }
         }
 
-        function createNotification(urgent, message = null) {
-            const notif = new Notification((urgent) ? "ATTACK!!!!!!" : (message ? "OGame Info" : "Fleet Timer Out!"), {
-                body: (urgent) ? "YOU ARE BEING ATTACKED!!!!" : (message ? message : "Your fleet has arrived!"),
+        function createNotification(header = null, message = null) {
+            const notif = new Notification((!header) ? "" : header, {
+                body: (!message) ? "" : message,
                 icon: "https://cdn-icons-png.flaticon.com/512/1827/1827347.png",
                 requireInteraction: false
             });
@@ -217,6 +396,7 @@
 
         function playBeep(frequency = 1600) {
             if (!audioCtx) return;
+
             const playSound = () => {
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
@@ -224,7 +404,7 @@
                 gainNode.connect(audioCtx.destination);
                 oscillator.type = "sine";
                 oscillator.frequency.value = frequency;
-                gainNode.gain.value = volume;
+                gainNode.gain.value = GameState.settings.volume;
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.100);
             };
@@ -238,7 +418,11 @@
             }
         }
 
-        async function normalAlert(){
+        async function fleetAlert(){
+            if (beeped) return;
+            if (GameState.settings.notify_fleet) notifyUser("Fleet Timer Out!", "Your fleet has arrived!");
+            if (!GameState.settings.sound_fleet) return;
+
             playBeep(1000); await Helpers.sleep(100);
             playBeep(1200); await Helpers.sleep(100);
             playBeep(1000); await Helpers.sleep(100);
@@ -246,10 +430,16 @@
         }
 
         async function attackAlert(){
+            if (GameState.settings.notify_attack && !attackedState) notifyUser("ATTACK!", "YOU ARE BEING ATTACKED!");
+            if (!GameState.settings.sound_attack) return;
+
             playBeep(1000);
         }
 
         async function auctionAlert(){
+            if (GameState.settings.notify_auction) notifyUser("Auction Info:", "Auction will end in aprox: 5min.");
+            if (!GameState.settings.sound_auction) return;
+
             playBeep(600); await Helpers.sleep(150);
             playBeep(800); await Helpers.sleep(150);
             playBeep(1200);
@@ -263,20 +453,17 @@
             let timeText = timerElement.textContent.trim();
 
             if(attackElementOn){
+                attackAlert();
                 if (!attackedState){
-                    notifyUser(true);
                     attackedState = true;
                 }
-                attackAlert();
             } else {
                 attackedState = false;
             }
 
             if (!flexiblePattern.test(timeText) && timeText) {
+                fleetAlert();
                 if (!beeped){
-                    console.log("Fleet Arrived! Beeping!");
-                    notifyUser();
-                    normalAlert();
                     beeped = true;
                 }
             } else beeped = false;
@@ -286,12 +473,11 @@
             if (GameState.auction.shadowEndTime > 0 || GameState.auction.timeText === "Aprox. 5m") {
                 if (!GameState.auction.hasBeeped) {
                     auctionAlert();
-                    notifyUser(false, "Auction will end in aprox. 5min");
                     GameState.auction.hasBeeped = true;
                     localStorage.setItem("AuctionState", JSON.stringify(GameState.auction));
                 }
             } else {
-                if (!GameState.auction.timeText === "Aprox. 5m" && GameState.auction.shadowEndTime === 0) {
+                if (GameState.auction.timeText !== "Aprox. 5m" && GameState.auction.shadowEndTime === 0) {
                     if (GameState.auction.hasBeeped) {
                         GameState.auction.hasBeeped = false;
                         localStorage.setItem("AuctionState", JSON.stringify(GameState.auction));
@@ -300,6 +486,75 @@
             }
         }
 
+        function injectSettingsPanel() {
+            if (document.getElementById("custom-settings-panel")) return;
+            const menuTable = document.querySelector("#menuTable");
+            if (!menuTable) return;
+
+            const panel = document.createElement("div");
+            panel.id = "custom-settings-panel";
+            panel.innerHTML = `
+                <h4>Alert Settings</h4>
+                <div class="setting-row">
+                    <label>Sound:</label>
+                    <a id="sound_fleet" class="ui-chip" style="${GameState.settings.sound_fleet ? "color:#9c0; font-weight:bold;" : "color:#666;"}">Fleet</a>
+                    <a id="sound_attack" class="ui-chip" style="${GameState.settings.sound_attack ? "color:#d43635; font-weight:bold;" : "color:#666;"}">Atk</a>
+                    <a id="sound_auction" class="ui-chip" style="${GameState.settings.sound_auction ? "color:#2389d7; font-weight:bold;" : "color:#666;"}">Auct</a>
+                </div>
+                <div class="setting-row">
+                    <label>Notifs:</label>
+                    <a id="notify_fleet" class="ui-chip" style="${GameState.settings.notify_fleet ? "color:#9c0; font-weight:bold;" : "color:#666;"}">Fleet</a>
+                    <a id="notify_attack" class="ui-chip" style="${GameState.settings.notify_attack ? "color:#d43635; font-weight:bold;" : "color:#666;"}">Atk</a>
+                    <a id="notify_auction" class="ui-chip" style="${GameState.settings.notify_auction ? "color:#2389d7; font-weight:bold;" : "color:#666;"}">Auct</a>
+                </div>
+                <div class="vol-row">
+                    <label>Volume:</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div id="vol_down" class="vol-btn">-</div>
+                        <span id="vol_display" style="color:white; width:25px; text-align:center;">${Math.round(GameState.settings.volume * 100)}%</span>
+                        <div id="vol_up" class="vol-btn">+</div>
+                    </div>
+                </div>
+            `;
+            
+            menuTable.parentNode.append(panel, menuTable.nextSibling);
+
+            muteElements.forEach(element => {
+                document.getElementById(element).addEventListener("click", (e) => {
+                    GameState.settings[element] = !GameState.settings[element];
+                    
+                    let activeColor = "#9c0"; 
+                    if (element.includes("attack")) activeColor = "#d43635";
+                    if (element.includes("auction")) activeColor = "#2389d7";
+
+                    e.target.style.color = GameState.settings[element] ? activeColor : "#666";
+                    e.target.style.fontWeight = GameState.settings[element] ? "bold" : "normal";
+                    
+                    if (element.includes("notify_") && GameState.settings[element]) {
+                        if ("Notification" in gameWindow && Notification.permission !== "granted") {
+                            Notification.requestPermission();
+                        }
+                    }
+                    localStorage.setItem("OgameSettings", JSON.stringify(GameState.settings));
+                })
+            });
+            
+            const updateVolume = (change) => {
+                let newVol = GameState.settings.volume + change;
+                newVol = Math.max(0.0, Math.min(1.0, newVol));
+                
+                GameState.settings.volume = parseFloat(newVol.toFixed(1));
+                document.getElementById("vol_display").textContent = Math.round(GameState.settings.volume * 100) + "%";
+                localStorage.setItem("OgameSettings", JSON.stringify(GameState.settings));
+                
+                playBeep(1000); 
+            };
+
+            document.getElementById("vol_down").addEventListener("click", () => updateVolume(-0.1));
+            document.getElementById("vol_up").addEventListener("click", () => updateVolume(0.1));
+        }
+
+        injectSettingsPanel();
         MasterClockQueue.push(checkFleetEvents);
         MasterClockQueue.push(checkAuctionEvents);
     }
@@ -466,170 +721,6 @@
         MasterClockQueue.push(localResourceTick);
     }
 
-    // --- CSS ---
-    function GlobalStyle() {
-        let css = `
-            /* --- EXPO PANEL CSS --- */
-
-            #${PANEL_ID} {
-                position: absolute;
-                z-index: 99999;
-                background-color: #161b23EE; border: 1px solid #455266; color: white;
-                padding: 15px; width: auto; height: auto; border-radius: 4px;
-                box-shadow: 4px 4px 10px rgba(0,0,0,0.8); display: none;
-            }
-            #${PANEL_ID} h3 {
-                margin-top: 0;
-                border-bottom: 1px solid #455266; padding-bottom: 5px;
-                text-align: center; color: #ff9600; font-size: 14px;
-            }
-
-            #expoTable { list-style: none; padding: 0; margin: 0; }
-
-            .expo-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-
-            .compact-input { width: 40px !important; height: 22px; padding-left: 4px; padding-right: 4px; position: relative; }
-
-            /* --- GLOBAL OGAME OVERRIDES --- */
-
-            .planetBarSpaceObjectHighlightContainer {
-                width: 23px !important;
-                height: 23px !important;
-                margin-left: 3.5px !important;
-                margin-right: 10px !important;
-            }
-
-            .planetBarSpaceObjectContainer {
-                justify-content: flex-start !important;
-                height: 20px !important;
-                margin-top: 10px !important;
-            }
-
-            .smallplanet {
-                height: 50px !important; /* Ligeiramente maior para caber a linha extra em baixo */
-                width: 140px !important;
-                position: relative !important; /* CRÍTICO: Cria a caixa-limite para a tabela de minas ancorar */
-            }
-
-            .planetPic {
-                width: 30px !important;
-                height: 30px !important;
-                padding-right: 5px;
-            }
-
-            .planet-name {
-                margin-right: auto !important;
-                margin-left: 0px !important;
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
-                max-width: 60px !important;
-            }
-
-            .planet-koords {
-                font-size: 9px !important;
-            }
-
-            a.constructionIcon {
-                top: 25px !important;
-                right: 113px !important;
-            }
-
-            #planetList:not(.custom-ready) {
-                opacity: 0 !important;
-                visibility: hidden !important;
-            }
-
-            #planetList.custom-ready {
-                opacity: 1 !important;
-                visibility: visible !important;
-                transition: opacity 0.15s ease-in;
-            }
-
-            /* --- CSS RESOURCES --- */
-
-            .my-resource-timer {
-                position: relative;
-                font-size: 9px;
-                margin-top: 13px;
-                pointer-events: none;
-            }
-
-            .smallplanet {
-                height: 50px !important;
-            }
-
-            .custom-res-table {
-                display: flex;
-                flex-direction: column;
-                align-items: flex-end;
-                font-size: 9px;
-                line-height: 11px;
-                margin-left: auto !important;
-                margin-right: 5px !important;
-                pointer-events: none;
-            }
-
-            .res-m { color: #a4a4a4; font-weight: bold; }
-            .res-c { color: #2389d7; font-weight: bold; }
-            .res-d { color: #1fb37d; font-weight: bold; }
-
-            /* --- CSS MINES LVLS --- */
-
-            .custom-mines-table {
-                display: flex;
-                flex-direction: row;
-                justify-content: space-between;
-                width: 134px;
-                font-size: 7px;
-                position: absolute !important;
-                bottom: -22px !important;
-                left: 2px !important;
-                pointer-events: none;
-            }
-
-            /* --- CSS AD BLOCKER --- */
-
-            #bannerSkyscrapercomponent {
-                display: none !important;
-            }
-
-            /* --- CSS KEYBIND HINTS --- */
-            .custom-keybind-hint {
-                position: absolute;
-                top: -10px;
-                right: 5px;
-                background-color: #ff9600;
-                color: #161b23;
-                font-size: 8px;
-                font-weight: 900;
-                padding: 1px 4px;
-                border-radius: 10px;
-                pointer-events: none;
-                z-index: 999;
-                box-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-                text-transform: uppercase;
-            }
-        `;
-
-        const injectCSS = () => {
-            if (document.getElementById('custom-style')) return;
-            let style = document.createElement('style');
-            style.id = 'custom-style';
-            style.type = 'text/css';
-            style.innerHTML = css;
-
-            const interval = setInterval(() => {
-                if (document.head) {
-                    document.head.appendChild(style);
-                    clearInterval(interval);
-                }
-            }, 10);
-        };
-
-        injectCSS();
-    }
-
     // --- FLEETSCRIPT ---
     function FleetScript(){
         let abortExpos = false;
@@ -749,7 +840,7 @@
             panel.style.display = "block";
         }
 
-        // --- SEND EXPO (API FETCH DIRETO COM AUTO-HEAL) ---
+        // --- SEND EXPO  ---
         async function sendExpoAPI(){
             let currConfig = localStorage.getItem("expoFleet");
             if (!currConfig) {
@@ -1243,7 +1334,7 @@
         setupPlanetList();
         waitForDrawerAndInjectValues();
         reloadPage();
-        MasterClockQueue.push(setupPlanetList); // RESTORED FOR UI PERSISTENCE
+        MasterClockQueue.push(setupPlanetList); 
     }
 
     // --- KEYBINDS SCRIPT ---
@@ -1266,6 +1357,11 @@
                 if (upgradeBtn && !upgradeBtn.disabled) {
                     Helpers.simulateClick(upgradeBtn);
                 }
+            }
+
+            // --- REFRESH PAGE ---
+            if (event.key === Config.keybinds.refreshPage && !isTyping) {
+                location.reload();
             }
 
             // --- AUCTION SCRIPT ---
@@ -1363,13 +1459,11 @@
             });
         }
 
-        MasterClockQueue.push(renderKeybindHints); // RESTORED FOR UI PERSISTENCE
+        MasterClockQueue.push(renderKeybindHints); 
     }
 
     // --- INITIALIZE ALL MODULES ---
     function Main(){
-        GlobalStyle();
-
         function StartMasterClock() {
             setInterval(() => {
                 for (let i = 0; i < MasterClockQueue.length; i++) {
@@ -1386,7 +1480,12 @@
             const metaPlanet = document.querySelector('meta[name="ogame-planet-id"]');
             if (metaPlanet) GameState.currentPlanetID = metaPlanet.content;
 
-            GameState.empireData = JSON.parse(localStorage.getItem("EmpireEconomy") || "{}");
+            let savedSettings = localStorage.getItem("OgameSettings");
+            if (savedSettings) {
+                Object.assign(GameState.settings, JSON.parse(savedSettings));
+            }
+
+            GameState.empireData = JSON.parse(localStorage.getItem("EmpireEconomy") || "{}");;
 
             let savedAuction = localStorage.getItem("AuctionState");
             if (savedAuction) {
