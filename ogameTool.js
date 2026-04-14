@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.23
+// @version      1.24
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -745,7 +745,7 @@
                 
                 if (aBtn.dataset.sending === "true") {
                     abortExpos = true;
-                    aBtn.innerHTML = `<span style="color: #d43635; font-weight:bold;">A Abortar...</span>`;
+                    aBtn.innerHTML = `<div style="color: #b41414; font-size: 9px; line-height: 25px; font-weight: bold; text-align: center; width: 27px; height: 27px; background: rgba(0,0,0,0.5); border-radius: 3px;">STP!</div>`;
                     return; 
                 }
                 
@@ -840,6 +840,23 @@
             panel.style.display = "block";
         }
 
+        // --- CHECK FLEET AMOUNT---
+        function checkAmoutFleet(idx, amount){
+            let availableShips = 0;
+            let shipID = shipNames[idx][1];
+            let shipVisual
+
+            if (gameWindow.fleetDispatcher?.shipsData?.[shipID]) {
+                availableShips = gameWindow.fleetDispatcher.shipsData[shipID].number;
+            } else {
+                shipVisual = document.querySelector(`li[data-technology="${shipID}"] .amount`);
+                if (shipVisual && shipVisual.dataset.value) availableShips = parseInt(shipVisual.dataset.value, 10);
+            }
+
+            return Math.min(amount, availableShips);
+        }
+
+
         // --- SEND EXPO  ---
         async function sendExpoAPI(){
             let currConfig = localStorage.getItem("expoFleet");
@@ -861,6 +878,7 @@
             let totalShipsAdded = 0;
             let totalShipsRequested = 0;
             let shipsSentThisRound = {};
+            
 
             for (let i = 0; i < shipNames.length; i++){
                 let shipID = shipNames[i][1];
@@ -868,20 +886,24 @@
 
                 if (requestedAmount > 0){
                     totalShipsRequested += requestedAmount;
-                    let availableShips = 0;
+                    let actualAmountToSend = checkAmoutFleet(i, requestedAmount);
 
-                    if (gameWindow.fleetDispatcher?.shipsData?.[shipID]) {
-                        availableShips = gameWindow.fleetDispatcher.shipsData[shipID].number;
-                    } else {
-                        const shipVisual = document.querySelector(`li[data-technology="${shipID}"] .amount`);
-                        if (shipVisual && shipVisual.dataset.value) availableShips = parseInt(shipVisual.dataset.value, 10);
-                    }
-
-                    let actualAmountToSend = Math.min(requestedAmount, availableShips);
                     if (actualAmountToSend > 0) {
                         payload.append(`am${shipID}`, actualAmountToSend);
                         totalShipsAdded += actualAmountToSend;
                         shipsSentThisRound[shipID] = actualAmountToSend;
+
+                    } else if (i < 8) {
+                        for (let j = i - 1; j >= 0; j--){
+                            actualAmountToSend = checkAmoutFleet(j, requestedAmount);
+                            let shipID = shipNames[j][1];
+                            if (actualAmountToSend > 0) {
+                                payload.append(`am${shipID}`, actualAmountToSend);
+                                totalShipsAdded += actualAmountToSend;
+                                shipsSentThisRound[shipID] = actualAmountToSend;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -1352,7 +1374,7 @@
             }
 
             // --- START BUILDING ---
-            if (event.key === Config.keybinds.upgradeItem) {
+            if (event.key === Config.keybinds.upgradeItem && !isTyping) {
                 const upgradeBtn = document.querySelector(".upgrade") || document.querySelector(".pay");
                 if (upgradeBtn && !upgradeBtn.disabled) {
                     Helpers.simulateClick(upgradeBtn);
