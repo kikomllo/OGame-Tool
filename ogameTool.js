@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.24
+// @version      1.25
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -49,8 +49,14 @@
             shadowNextAuction: 0,
             currentSum: "0",
             nextFetch: 0,
-            hasBeeped: false // Persistent Alarm Memory
-        }
+            hasBeeped: false,
+            imageSrc: "",
+            itemName: ""
+        },
+        audioCtx: null,
+        beeped: false,
+        attackedState: false,
+        UINodes: {}
     };
 
     // --- SHIP MAPPING ---
@@ -77,11 +83,6 @@
     const PANEL_ID = "customPanel";
 
     const rowCount = 6;
-    let audioCtx = null;
-    let beeped = false;
-    let attackedState = false;
-
-    let UINodes = {};
 
     if (!localStorage.getItem("expoFleet")){
         localStorage.setItem("expoFleet", "");
@@ -223,7 +224,6 @@
                 cursor: pointer; padding: 2px 0; border-radius: 2px;
                 transition: all 0.1s; user-select: none;
             }
-            /* The Vol Stepper CSS */
             .vol-row {
                 display: flex; justify-content: space-between; align-items: center;
                 margin-top: 8px; padding-top: 6px; border-top: 1px dashed #344054;
@@ -235,6 +235,29 @@
                 user-select: none;
             }
             .vol-btn:hover { background: #ff9600; border-color: #ff9600; color: black; }
+
+            #custom-auction-panel {
+                position: absolute; top: 40px; right: 15px;
+                background-color: #161b23EE; border: 1px solid #455266;
+                color: #999; padding: 6px 10px; border-radius: 4px;
+                font-size: 10px; z-index: 500; display: flex;
+                align-items: center; gap: 10px;
+                pointer-events: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            }
+            #custom-auction-panel img {
+                width: 32px; height: 32px; border-radius: 3px; 
+                display: none; border: 1px solid #455266; 
+                pointer-events: auto;
+            }
+            .auction-info-col {
+                display: flex; flex-direction: column; align-items: flex-end;
+            }
+            .auction-title {
+                color: #ff9600; font-weight: bold; margin-bottom: 2px;
+            }
+            .auction-bid-text {
+                color: #a4a4a4;
+            }
         `;
 
         let style = document.createElement('style');
@@ -242,14 +265,13 @@
         style.type = 'text/css';
         style.innerHTML = css;
 
-        // Inject immediately into documentElement if head isn't ready
         if (document.head) {
             document.head.appendChild(style);
         } else {
             document.documentElement.appendChild(style);
         }
     };
-    
+
     injectGlobalCSS();
 
     // --- HELPERS ---
@@ -277,10 +299,10 @@
             if (totalSeconds == 0) return "Full";
 
             let values = [
-                Math.floor(totalSeconds / 86400),         // DAYS
-                Math.floor((totalSeconds / 3600) % 24),   // HOURS
-                Math.floor((totalSeconds / 60) % 60),     // MINUTES
-                Math.floor(totalSeconds % 60)             // SECONDS
+                Math.floor(totalSeconds / 86400),
+                Math.floor((totalSeconds / 3600) % 24),
+                Math.floor((totalSeconds / 60) % 60),
+                Math.floor(totalSeconds % 60)
             ];
 
             let string = "";
@@ -348,12 +370,12 @@
     function AlertsScript(volume=0.5) {
         
         function initAudioContext() {
-            if (!audioCtx) {
+            if (!GameState.audioCtx) {
                 const AudioContext = gameWindow.AudioContext || gameWindow.webkitAudioContext;
-                audioCtx = new AudioContext();
+                GameState.audioCtx = new AudioContext();
             }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
+            if (GameState.audioCtx.state === 'suspended') {
+                GameState.audioCtx.resume();
             }
         }
         function unlockAudio() {
@@ -386,7 +408,7 @@
         function createNotification(header = null, message = null) {
             const notif = new Notification((!header) ? "" : header, {
                 body: (!message) ? "" : message,
-                icon: "https://cdn-icons-png.flaticon.com/512/1827/1827347.png",
+                icon: "[https://cdn-icons-png.flaticon.com/512/1827/1827347.png](https://cdn-icons-png.flaticon.com/512/1827/1827347.png)",
                 requireInteraction: false
             });
             notif.onclick = function() {
@@ -395,22 +417,22 @@
         }
 
         function playBeep(frequency = 1600) {
-            if (!audioCtx) return;
+            if (!GameState.audioCtx) return;
 
             const playSound = () => {
-                const oscillator = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
+                const oscillator = GameState.audioCtx.createOscillator();
+                const gainNode = GameState.audioCtx.createGain();
                 oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                gainNode.connect(GameState.audioCtx.destination);
                 oscillator.type = "sine";
                 oscillator.frequency.value = frequency;
                 gainNode.gain.value = GameState.settings.volume;
                 oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.100);
+                oscillator.stop(GameState.audioCtx.currentTime + 0.100);
             };
 
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume().then(() => { playSound(); }).catch(err => {
+            if (GameState.audioCtx.state === 'suspended') {
+                GameState.audioCtx.resume().then(() => { playSound(); }).catch(err => {
                     console.warn("Audio blocked. Awaiting user interaction.", err);
                 });
             } else {
@@ -419,7 +441,7 @@
         }
 
         async function fleetAlert(){
-            if (beeped) return;
+            if (GameState.beeped) return;
             if (GameState.settings.notify_fleet) notifyUser("Fleet Timer Out!", "Your fleet has arrived!");
             if (!GameState.settings.sound_fleet) return;
 
@@ -430,7 +452,7 @@
         }
 
         async function attackAlert(){
-            if (GameState.settings.notify_attack && !attackedState) notifyUser("ATTACK!", "YOU ARE BEING ATTACKED!");
+            if (GameState.settings.notify_attack && !GameState.attackedState) notifyUser("ATTACK!", "YOU ARE BEING ATTACKED!");
             if (!GameState.settings.sound_attack) return;
 
             playBeep(1000);
@@ -454,19 +476,19 @@
 
             if(attackElementOn){
                 attackAlert();
-                if (!attackedState){
-                    attackedState = true;
+                if (!GameState.attackedState){
+                    GameState.attackedState = true;
                 }
             } else {
-                attackedState = false;
+                GameState.attackedState = false;
             }
 
             if (!flexiblePattern.test(timeText) && timeText) {
                 fleetAlert();
-                if (!beeped){
-                    beeped = true;
+                if (!GameState.beeped){
+                    GameState.beeped = true;
                 }
-            } else beeped = false;
+            } else GameState.beeped = false;
         }
 
         function checkAuctionEvents() {
@@ -636,7 +658,10 @@
         function fetchInitialResources() {
             const url = "/game/index.php?page=fetchResources&ajax=1";
             fetch(url)
-                .then(response => response.text())
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.text();
+                })
                 .then(text => Helpers.parseCleanJSON(text))
                 .then(data => {
                     const metaPlanet = document.querySelector('meta[name="ogame-planet-id"]');
@@ -657,7 +682,12 @@
                     empEconomy[currentPlanetID] = planetEconomy;
                     localStorage.setItem("EmpireEconomy", JSON.stringify(empEconomy));
                 })
-                .catch(err => console.error("[!] ERROR: Resource fetch. Reason: ", err));
+                .catch(err => {
+                    if (err.name === 'TypeError' && err.message.includes('NetworkError')) {
+                        return; 
+                    }
+                    console.error("[!] ERROR: Resource fetch. Reason: ", err);
+                });
         }
 
         function localResourceTick() {
@@ -690,7 +720,7 @@
             // --- MASTER CLOCK UI RENDERER ---
             for (let pID in empEconomy) {
                 let pData = empEconomy[pID];
-                let ui = UINodes[pID];
+                let ui = GameState.UINodes[pID];
 
                 if (!ui || !ui.res || !ui.mines) continue;
 
@@ -789,10 +819,8 @@
             }
         };
 
-        // DESKTOP LISTENER
         document.addEventListener('click', handleMenuInteraction, true);
 
-        // IPAD / TOUCHSCREEN LISTENER
         document.addEventListener('touchend', (e) => {
             if (!e.target || typeof e.target.closest !== 'function') return;
 
@@ -841,7 +869,7 @@
         }
 
         // --- CHECK FLEET AMOUNT---
-        function checkAmoutFleet(idx, amount){
+        function checkAmountFleet(idx, amount){
             let availableShips = 0;
             let shipID = shipNames[idx][1];
             let shipVisual
@@ -855,7 +883,6 @@
 
             return Math.min(amount, availableShips);
         }
-
 
         // --- SEND EXPO  ---
         async function sendExpoAPI(){
@@ -886,16 +913,16 @@
 
                 if (requestedAmount > 0){
                     totalShipsRequested += requestedAmount;
-                    let actualAmountToSend = checkAmoutFleet(i, requestedAmount);
+                    let actualAmountToSend = checkAmountFleet(i, requestedAmount);
 
                     if (actualAmountToSend > 0) {
                         payload.append(`am${shipID}`, actualAmountToSend);
                         totalShipsAdded += actualAmountToSend;
                         shipsSentThisRound[shipID] = actualAmountToSend;
 
-                    } else if (i < 8) {
+                    } else if (i > 0 && i < 8) {
                         for (let j = i - 1; j >= 0; j--){
-                            actualAmountToSend = checkAmoutFleet(j, requestedAmount);
+                            actualAmountToSend = checkAmountFleet(j, requestedAmount);
                             let shipID = shipNames[j][1];
                             if (actualAmountToSend > 0) {
                                 payload.append(`am${shipID}`, actualAmountToSend);
@@ -1080,11 +1107,15 @@
             addUIPanel();
         }
 
+        addUIElements();
+        
+
         function mainFleet(){
             if (Helpers.isPage('fleetdispatch')) {
                 setTimeout(addUIElements, 500);
             }
         }
+
         mainFleet();
     }
 
@@ -1095,22 +1126,19 @@
             if (!container) {
                 container = document.createElement("div");
                 container.id = "custom-auction-panel";
-                container.style = `
-                    position: absolute; top: 40px; right: 15px;
-                    background-color: #161b23EE; border: 1px solid #455266;
-                    color: #999; padding: 5px 10px; border-radius: 4px;
-                    font-size: 10px; z-index: 500; display: flex;
-                    flex-direction: column; align-items: flex-end;
-                    pointer-events: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
-                `;
+                
                 container.innerHTML = `
-                    <div style="color: #ff9600; font-weight: bold; margin-bottom: 2px;">AUCTION</div>
-                    <div id="auction-time">A verificar...</div>
-                    <div id="auction-bid" style="color: #a4a4a4;">-</div>
+                    <img id="auction-img" src="" title="">
+                    <div class="auction-info-col">
+                        <div class="auction-title">AUCTION</div>
+                        <div id="auction-time">Fetching...</div>
+                        <div id="auction-bid" class="auction-bid-text">-</div>
+                    </div>
                 `;
                 document.body.appendChild(container);
             }
             return {
+                img: document.getElementById("auction-img"),
                 time: document.getElementById("auction-time"),
                 bid: document.getElementById("auction-bid")
             };
@@ -1122,6 +1150,7 @@
             try {
                 const url = "/game/index.php?page=ingame&component=traderAuctioneer";
                 const response = await fetch(url, { credentials: 'include' });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const htmlText = await response.text();
 
                 const parser = new DOMParser();
@@ -1131,10 +1160,44 @@
                 let sumElement = doc.querySelector('.currentSum');
 
                 let rawText = timeElement ? timeElement.textContent.trim() : "";
-                let currentSum = sumElement ? sumElement.textContent.trim() : "-";
-
                 let currentSumText = sumElement ? sumElement.textContent.trim() : "0";
+
                 GameState.auction.currentSum = parseInt(currentSumText.replace(/\D/g, ''), 10) || 0;
+
+                let extractedSrc = null;
+                GameState.auction.itemName = "Unknown Item";
+
+                let imgNode = doc.querySelector('img[src*="item-images"], img[src*="/items/"], .auction_item img');
+                
+                if (imgNode && imgNode.hasAttribute('src')) {
+                    extractedSrc = imgNode.getAttribute('src');
+                    GameState.auction.itemName = imgNode.getAttribute('alt') || imgNode.getAttribute('title') || "Unknown Item";
+                } else {
+                    let bgNode = doc.querySelector('.auction_item, .image_120x120, .item_icon');
+                    if (bgNode) {
+                        let styleStr = bgNode.getAttribute('style') || "";
+                        let bgMatch = styleStr.match(/background(?:-image)?:\s*url\(['"]?(.*?)['"]?\)/i);
+                        if (bgMatch && bgMatch[1]) {
+                            extractedSrc = bgMatch[1];
+                        }
+                    }
+                }
+
+                if (!extractedSrc) {
+                    let rawImageMatch = htmlText.match(/src=["']([^"']*(?:\/items\/|\/item-images\/)[^"']*\.(?:png|jpg|gif))["']/i);
+                    if (rawImageMatch) extractedSrc = rawImageMatch[1];
+                }
+
+                if (extractedSrc) {
+                    if (extractedSrc.startsWith('//')) {
+                        extractedSrc = 'https:' + extractedSrc;
+                    } else if (extractedSrc.startsWith('/') && !extractedSrc.startsWith('//')) {
+                        extractedSrc = gameWindow.location.origin + extractedSrc;
+                    }
+                    GameState.auction.imageSrc = extractedSrc;
+                } else {
+                    GameState.auction.imageSrc = "";
+                }
 
                 let overlay = doc.querySelector('.noAuctionOverlay');
                 let isWaitingMode = false;
@@ -1145,15 +1208,12 @@
 
                 if (isWaitingMode) {
                     let match = rawText.match(/\d+/);
-
                     if (match) {
                         let totalSeconds = parseInt(match[0], 10);
                         GameState.auction.shadowNextAuction = Date.now() + (totalSeconds * 1000);
                     }
-
                     GameState.auction.timeText = "Waiting";
                     GameState.auction.shadowEndTime = 0;
-
                 } else {
                     let match = rawText.match(/\d+/);
                     let timeText = match ? `Aprox. ${match[0]}m` : rawText;
@@ -1171,6 +1231,9 @@
                 localStorage.setItem("AuctionState", JSON.stringify(GameState.auction));
 
             } catch (error) {
+                if (error.name === 'TypeError' && error.message.includes('NetworkError')) {
+                    return;
+                }
                 console.error("[!] ERROR: [Auction] Error in Ghost Fetcher. Reason:", error);
             }
         }
@@ -1195,7 +1258,22 @@
 
             uiNodes.bid.textContent = Helpers.compactNumber.format(GameState.auction.currentSum);
 
-            // --- INTERFACE RENDERING ---
+            let isWaiting = GameState.auction.shadowNextAuction > currentTime;
+
+            if (GameState.auction.imageSrc && !isWaiting) {
+                let fileName = GameState.auction.imageSrc.split('/').pop();
+                if (!uiNodes.img.src.includes(fileName)) {
+                    uiNodes.img.src = GameState.auction.imageSrc;
+                    uiNodes.img.style.display = "block";
+                }
+                
+                uiNodes.img.title = GameState.auction.itemName || "";
+                
+            } else {
+                uiNodes.img.style.display = "none";
+                uiNodes.img.title = "";
+            }
+
             if (GameState.auction.shadowNextAuction > currentTime) {
                 let secondsLeft = Math.floor((GameState.auction.shadowNextAuction - currentTime) / 1000);
 
@@ -1238,10 +1316,10 @@
                         sibling.append(planet_name);
                     }
 
-                    UINodes[pID] = { res: null, mines: null };
+                    GameState.UINodes[pID] = { res: null, mines: null };
 
                     let minesContainer = document.createElement("div");
-                    UINodes[pID].mines = minesContainer;
+                    GameState.UINodes[pID].mines = minesContainer;
                     minesContainer.className = "custom-mines-table";
                     minesContainer.id = "minesTable-" + pID;
                     minesContainer.innerHTML = `
@@ -1251,7 +1329,7 @@
                     `;
 
                     let resContainer = document.createElement("div");
-                    UINodes[pID].res = resContainer;
+                    GameState.UINodes[pID].res = resContainer;
                     resContainer.className = "custom-res-table";
                     resContainer.id = "resTable-" + pID;
                     resContainer.innerHTML = `
@@ -1269,35 +1347,65 @@
             });
         }
 
-        function reloadPage(){
-            let nextReloadTime = Date.now() + (Math.random() * 600000 + 300000);
+        function observePlanetList() {
+            let planetListContainer = document.querySelector("#planetList");
+            if (!planetListContainer || !planetListContainer.parentNode) return;
 
-            function checkAutoReload() {
-                if (Date.now() >= nextReloadTime) {
-                    console.log("[-] WARNING: [Master Clock] Starting safety auto-reload!");
-                    location.reload();
+            const stableParent = planetListContainer.parentNode;
+
+            const observer = new MutationObserver((mutations) => {
+                let domChanged = false;
+                
+                for (let mutation of mutations) {
+                    if (mutation.addedNodes.length > 0) {
+                        for (let node of mutation.addedNodes) {
+                            if (node.nodeType === 1) {
+                                if (node.id === 'planetList') {
+                                    domChanged = true;
+                                    break;
+                                }
+                                if (node.classList.contains('smallplanet') || node.querySelector('.smallplanet')) {
+                                    domChanged = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (domChanged) break;
                 }
-            }
 
-            MasterClockQueue.push(checkAutoReload);
+                if (domChanged) {
+                    setTimeout(() => {
+                        let currentList = document.querySelector("#planetList");
+                        if (currentList && !currentList.classList.contains("custom-ready")) {
+                            setupPlanetList();
+                        }
+                    }, 50);
+                }
+            });
+
+            observer.observe(stableParent, { childList: true, subtree: true });
         }
 
         function waitForDrawerAndInjectValues() {
             const drawerID = "technologydetails";
+            const targetNode = document.querySelector('#inhalt') || document.body; 
+
             const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
+                for (let mutation of mutations) {
                     if (mutation.addedNodes.length) {
-                        mutation.addedNodes.forEach((node) => {
+                        for (let node of mutation.addedNodes) {
                             if (node.id === drawerID || (node.querySelector && node.querySelector(`#${drawerID}`))) {
                                 handleEnergy();
                             }
-                        });
+                        }
                     }
-                });
+                }
             });
-            observer.observe(document.body, { childList: true, subtree: true });
+            observer.observe(targetNode, { childList: true, subtree: true });
         }
 
+        // --- ENERGY LOGIC ---
         function handleEnergy(){
             let energy = document.querySelector(".additional_energy_consumption");
             let current_energy = document.querySelector("#resources_energy");
@@ -1321,7 +1429,6 @@
             let input = document.querySelector('#build_amount');
             let amount = input ? parseInt(input.value) || 1 : 1;
 
-            // --- ENERGY LOGIC ---
             let energyEle = document.querySelector(".energy_production");
             if (energyEle && input) {
                 let bonus = energyEle.children[1].children[0];
@@ -1349,14 +1456,57 @@
             }
         }
 
+        function keepAliveScript() {
+            let lastActivity = Date.now();
+            const BASE_TIMEOUT = 50 * 60 * 1000; 
+
+            let detected = false;
+            function updateActivity() {
+                if (detected) return;
+                lastActivity = Date.now();
+                detected = true;
+                setTimeout(() => detected = false, 5000); 
+            }
+
+            document.addEventListener('mousemove', updateActivity);
+            document.addEventListener('keydown', updateActivity);
+            document.addEventListener('click', updateActivity);
+            document.addEventListener('touchstart', updateActivity);
+
+            function checkSession() {
+                let now = Date.now();
+                let timeSinceLastActivity = now - lastActivity;
+
+                let randomOffset = Math.random() * (5 * 60 * 1000); 
+                let dynamicTimeout = BASE_TIMEOUT + randomOffset;
+
+                if (timeSinceLastActivity > dynamicTimeout) {
+                    console.log("[.] INFO: [Keep-Alive] 50+ mins of inactivity detected. Pinging server...");
+                    
+                    const url = "/game/index.php?page=ingame&component=overview";
+                    
+                    fetch(url, { credentials: 'include' })
+                        .then(response => {
+                            if (response.ok) {
+                                console.log("[.] INFO: [Keep-Alive] Session refreshed successfully.");
+                                lastActivity = Date.now(); 
+                            }
+                        })
+                        .catch(err => console.warn("[-] WARNING: [Keep-Alive] Ping failed. Reason:", err));
+                }
+            }
+
+            MasterClockQueue.push(checkSession);
+        }
+
         if(Helpers.isPage('shipyard') || Helpers.isPage('supplies')){
             document.addEventListener('input', function(event){ updateValues(); });
         }
 
-        setupPlanetList();
+        keepAliveScript();
+        setupPlanetList(); 
+        observePlanetList(); 
         waitForDrawerAndInjectValues();
-        reloadPage();
-        MasterClockQueue.push(setupPlanetList); 
     }
 
     // --- KEYBINDS SCRIPT ---
@@ -1386,7 +1536,6 @@
                 location.reload();
             }
 
-            // --- AUCTION SCRIPT ---
             if (event.key === Config.keybinds.clearBids && isAuction && !isTyping) {
                 const btns = document.querySelectorAll(".resourceAmount");
                 btns.forEach(btn => {
@@ -1507,7 +1656,7 @@
                 Object.assign(GameState.settings, JSON.parse(savedSettings));
             }
 
-            GameState.empireData = JSON.parse(localStorage.getItem("EmpireEconomy") || "{}");;
+            GameState.empireData = JSON.parse(localStorage.getItem("EmpireEconomy") || "{}");
 
             let savedAuction = localStorage.getItem("AuctionState");
             if (savedAuction) {
@@ -1533,4 +1682,5 @@
     }
 
     Main();
+
 })();
