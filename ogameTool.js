@@ -242,7 +242,8 @@
                 color: #999; padding: 6px 10px; border-radius: 4px;
                 font-size: 10px; z-index: 500; display: flex;
                 align-items: center; gap: 10px;
-                pointer-events: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+                pointer-events: auto; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+                cursor: pointer;
             }
             #custom-auction-panel img {
                 width: 32px; height: 32px; border-radius: 3px; 
@@ -1107,9 +1108,6 @@
             addUIPanel();
         }
 
-        addUIElements();
-        
-
         function mainFleet(){
             if (Helpers.isPage('fleetdispatch')) {
                 setTimeout(addUIElements, 500);
@@ -1136,6 +1134,10 @@
                     </div>
                 `;
                 document.body.appendChild(container);
+
+                container.addEventListener("click", () => {
+                    window.location.href = "/game/index.php?page=ingame&component=traderOverview#animation=false&page=traderAuctioneer";
+                });
             }
             return {
                 img: document.getElementById("auction-img"),
