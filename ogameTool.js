@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.25
+// @version      1.26
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/*
@@ -236,6 +236,7 @@
             }
             .vol-btn:hover { background: #ff9600; border-color: #ff9600; color: black; }
 
+            /* --- CSS AUCTION PANEL ---*/
             #custom-auction-panel {
                 position: absolute; top: 40px; right: 15px;
                 background-color: #161b23EE; border: 1px solid #455266;
@@ -244,6 +245,11 @@
                 align-items: center; gap: 10px;
                 pointer-events: auto; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
                 cursor: pointer;
+                user-select: none;
+                transition: border-color 0.2s ease-in-out;
+            }
+            #custom-auction-panel:hover {
+                border-color: #ff9600;
             }
             #custom-auction-panel img {
                 width: 32px; height: 32px; border-radius: 3px; 
@@ -409,7 +415,7 @@
         function createNotification(header = null, message = null) {
             const notif = new Notification((!header) ? "" : header, {
                 body: (!message) ? "" : message,
-                icon: "[https://cdn-icons-png.flaticon.com/512/1827/1827347.png](https://cdn-icons-png.flaticon.com/512/1827/1827347.png)",
+                icon: "https://cdn-icons-png.flaticon.com/512/1827/1827347.png",
                 requireInteraction: false
             });
             notif.onclick = function() {
