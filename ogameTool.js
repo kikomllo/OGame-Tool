@@ -394,11 +394,8 @@
         },
 
         calculateFS: function(targetTimeSeconds, origin, slowestShipSpeed, missionType) {
-            let pTarget = 16;
-            if (missionType === '7') pTarget = 15;
-            else if (missionType === '8') pTarget = origin.p;
+            let pTarget = (missionType === '7') ? 15 : 16;
 
-            // Map standard OGame speeds per mission
             let speedType = 'peaceful';
             if (missionType === '6' || missionType === '1' || missionType === '2' || missionType === '9') speedType = 'war';
             else if (missionType === '5') speedType = 'holding';
@@ -1089,7 +1086,7 @@
                 }
                 await Helpers.sleep(Math.random() * 1500 + 1500);
             }
-            if (fullSuccess) UIHelpers.flashBtn(btn, "DONE!", "#1fb37d");
+            if (fullSuccess) UIHelpers.flashBtn(btn, "OK!", "#1fb37d");
             setTimeout(() => location.reload(), 1000);
         }
         if (Helpers.isPage('fleetdispatch')) setTimeout(injectUI, 500);
@@ -1148,6 +1145,11 @@
             p.id = FS_PANEL_ID;
             let c = JSON.parse(localStorage.getItem(PREF + "fsConfig")),
                 pad = n => n.toString().padStart(2, '0');
+            
+            if (c.mission === '8') {
+                c.mission = '6';
+                localStorage.setItem(PREF + "fsConfig", JSON.stringify(c));
+            }
             
             p.innerHTML = `
                 <h3>Quick Fleetsave</h3>
@@ -1293,7 +1295,7 @@
                     let data = await CoreAPI.dispatchFleet(plObj);
                     if (data.success) {
                         Helpers.notifyNative(`Fleet dispatched to [${targetData.g}:${targetData.s}:${targetData.p}] at ${targetData.speed}% speed.`, false);
-                        UIHelpers.flashBtn(aBtn, "DONE!", "#1fb37d");
+                        UIHelpers.flashBtn(aBtn, "OK!", "#1fb37d");
                         setTimeout(() => location.reload(), 1500);
                     } else {
                         Helpers.notifyNative(`Fleetsave failed: ${(data.errors?.[0]?.message || "Server rejected request.")}`, true);
