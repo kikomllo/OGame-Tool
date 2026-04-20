@@ -654,7 +654,7 @@
                     GameState.beeped = true;
 
                     if (typeof GameState.triggerBackgroundScrape === 'function') {
-                        setTimeout(GameState.triggerBackgroundScrape, 3000);
+                        setTimeout(GameState.triggerBackgroundScrape, 7000);
                     }
                 }
             } else {
@@ -1644,19 +1644,19 @@
             if (!msgId || trackedIds.has(msgId)) return;
 
             let rawData = msgNode.querySelector('.rawMessageData');
-            let title = msgNode.querySelector('.msg_title')?.textContent || "";
+            let title = msgNode.querySelector('.msgTitle')?.textContent || ""; // OGame updated class name
 
             let isExpo = (rawData && rawData.hasAttribute('data-raw-expeditionresult')) || 
                          msgNode.querySelector('.mission_15, .icon_fleet_15') || 
-                         /Expedi|Eksped|Ke[sş]if/i.test(title);
+                         /Expedi|Eksped|Ke[sş]if|Resultado da Expedição/i.test(title);
                          
             if (!isExpo) return;
 
             trackedIds.add(msgId);
 
             let arr = Array.from(trackedIds);
-            if (arr.length > 200) {
-                arr = arr.slice(-200);
+            if (arr.length > 500) { // Increased to 500 to accommodate more waves
+                arr = arr.slice(-500);
                 trackedIds.clear();
                 arr.forEach(id => trackedIds.add(id));
             }
@@ -1666,7 +1666,7 @@
             let fShips = 0;
             let fleetDetails = {};
 
-            // 1. Scrape Resources & DM perfectly from OGame's hidden JSON attributes
+            // 1. Scrape Resources & DM
             if (rawData) {
                 let resJson = rawData.getAttribute('data-raw-resourcesgained');
                 if (resJson) {
@@ -1675,62 +1675,36 @@
                         if (resObj.metal) fMetal = parseInt(resObj.metal, 10);
                         if (resObj.crystal) fCrystal = parseInt(resObj.crystal, 10);
                         if (resObj.deuterium) fDeut = parseInt(resObj.deuterium, 10);
-                        
                         let rawDM = resObj.darkmatter || resObj.darkMatter;
                         if (rawDM) fDM = parseInt(rawDM, 10);
                     } catch (e) { console.error("Error parsing expo JSON", e); }
                 }
             }
 
-            // 2. Scrape Standard Ships safely via DOM attributes (ignoring Lifeforms)
+            // 2. Scrape Ships
             let lootItems = msgNode.querySelectorAll('.loot-item');
             lootItems.forEach(item => {
                 let techIcon = item.querySelector('technology-icon');
                 let amountNode = item.querySelector('.amount');
-
                 if (techIcon && amountNode) {
                     let amount = parseInt(amountNode.textContent.replace(/[.,]/g, ''), 10) || 0;
-
-                    // Cross-reference with our strict list of standard ships
                     for (let i = 0; i < shipNames.length; i++) {
-                        let internalName = shipNames[i][0]; // e.g., "battleship"
-                        let shipId = shipNames[i][1];       // e.g., 207
-
-                        // If the icon has this exact boolean attribute, it's a standard ship!
-                        if (techIcon.hasAttribute(internalName)) {
-                            let displayName = AstroMath.shipSpecs[shipId].name;
+                        if (techIcon.hasAttribute(shipNames[i][0])) {
+                            let displayName = AstroMath.shipSpecs[shipNames[i][1]].name;
                             fShips += amount;
                             fleetDetails[displayName] = (fleetDetails[displayName] || 0) + amount;
-                            break; // Match found, stop checking
+                            break;
                         }
                     }
                 }
             });
 
             let log = JSON.parse(localStorage.getItem(PREF + "expoLog") || "[]");
-
-            // Safely extract the exact in-game arrival time
             let now = Date.now();
             let rawTimestamp = rawData ? rawData.getAttribute('data-raw-timestamp') : null;
-
-            if (rawTimestamp) {
-                // Use OGame's hidden precise UNIX timestamp (convert to milliseconds)
-                now = parseInt(rawTimestamp, 10) * 1000;
-            } else {
-                // Fallback: parse the "DD.MM.YYYY HH:MM:SS" text from the header
-                let dateStr = msgNode.querySelector('.msgDate')?.textContent.trim();
-                if (dateStr) {
-                    let [d, t] = dateStr.split(" ");
-                    let [day, mo, yr] = d.split(".");
-                    // Convert to standard ISO format so JS Date can parse it
-                    let parsedDate = new Date(`${yr}-${mo}-${day}T${t}`).getTime();
-                    if (!isNaN(parsedDate)) now = parsedDate;
-                }
-            }
+            if (rawTimestamp) now = parseInt(rawTimestamp, 10) * 1000;
 
             let waveWindow = 15 * 60 * 1000;
-            
-            // Search the ENTIRE log to find if a wave already exists within 15 mins of THIS message
             let matchingWave = log.find(w => Math.abs(now - w.timestamp) <= waveWindow);
 
             if (matchingWave) {
@@ -1744,28 +1718,17 @@
                     matchingWave.fleet[s] = (matchingWave.fleet[s] || 0) + fleetDetails[s];
                 }
             } else {
-                // No matching wave found, spawn a new one
                 log.push({
                     timestamp: now,
                     count: 1,
-                    metal: fMetal,
-                    crystal: fCrystal,
-                    deuterium: fDeut,
-                    dm: fDM,
-                    ships: fShips,
+                    metal: fMetal, crystal: fCrystal, deuterium: fDeut, dm: fDM, ships: fShips,
                     fleet: fleetDetails
                 });
             }
 
-            // Sort newest first
             log.sort((a, b) => b.timestamp - a.timestamp);
-            
-            // Safely keep only the 10 newest waves (slice is safer than pop if multiple waves were spawned)
             if (log.length > 10) log = log.slice(0, 10);
-            
             localStorage.setItem(PREF + "expoLog", JSON.stringify(log));
-            renderExpoPanel();
-
         }
 
         let isScraping = false;
@@ -1773,67 +1736,72 @@
         GameState.triggerBackgroundScrape = async () => {
             if (isScraping) return;
             isScraping = true;
+            
             try {
-                // FIXED: Changed tab=24 to tab=22 based on your server's DOM mapping
-                let res = await fetch("/game/index.php?page=messages&tab=22&ajax=1", { credentials: 'include' });
-                let html = await res.text();
-
-                let doc = new DOMParser().parseFromString(html, "text/html");
-                let newMsgs = doc.querySelectorAll('.msg_new[data-msg-id]');
-
-                if (newMsgs.length === 0) return;
-
-                let msgCount = 0;
-                newMsgs.forEach(msgNode => {
-                    if (!trackedIds.has(msgNode.dataset.msgId)) {
-                        processMessage(msgNode);
-                        msgCount++;
-                    }
+                let res = await fetch("index.php?page=componentOnly&component=messages&asJson=1&action=getMessagesList", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: "activeSubTab=22&showTrash=false",
+                    credentials: "include"
                 });
 
-                let tokenMatch = html.match(/name=["']token["']\s+value=["']([^"'\s><]{20,})["']/i) || html.match(/token\s*=\s*["']([^"'\s><]{20,})["']/i);
-                if (tokenMatch && tokenMatch[1] && msgCount > 0) {
-                    let payload = new URLSearchParams();
-                    payload.append('messageId', '-1');
-                    payload.append('action', '103');
-                    payload.append('ajax', '1');
-                    payload.append('token', tokenMatch[1]);
+                if (!res.ok) return;
+                let data = await res.json();
 
-                    // FIXED: Also update the POST request to mark messages as read on tab=22
-                    await fetch("/game/index.php?page=messages&tab=22&ajax=1", {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
-                        body: payload.toString(),
-                        credentials: 'include'
+                if (data.messages && Array.isArray(data.messages)) {
+                    let msgCount = 0;
+                    const parser = new DOMParser();
+
+                    data.messages.forEach(htmlFragment => {
+                        // 1. REGEX PRE-FILTER: Extract ID without parsing full DOM
+                        const idMatch = htmlFragment.match(/data-msg-id=["'](\d+)["']/);
+                        const msgId = idMatch ? idMatch[1] : null;
+
+                        // 2. Only parse if it's a new ID
+                        if (msgId && !trackedIds.has(msgId)) {
+                            let doc = parser.parseFromString(htmlFragment, "text/html");
+                            let msgNode = doc.querySelector('.msg[data-msg-id]');
+                            if (msgNode) {
+                                processMessage(msgNode);
+                                msgCount++;
+                            }
+                        }
                     });
 
-                    Helpers.notifyNative(`Tracked ${msgCount} new Expo(s) in background!`, false);
+                    if (msgCount > 0) {
+                        renderExpoPanel(); // Render once for the whole wave
+                        Helpers.notifyNative(`Wave Update: ${msgCount} new report(s) captured.`, false);
+                        
+                        // Safety sweep: If we expected 6 but got fewer, check again in 30s
+                        if (msgCount < 6) {
+                            setTimeout(GameState.triggerBackgroundScrape, 30000);
+                        }
+                    }
                 }
             } catch (e) {
-                console.error("[!] Background Expo Scrape Failed:", e);
-            } finally { isScraping = false; }
+                console.error("[!] Scraper Error:", e);
+            } finally {
+                isScraping = false;
+            }
         };
 
         function observeMessages() {
-            let contentArea = document.querySelector('#inhalt') || document.querySelector('#contentWrapper') || document.body;
+            let contentArea = document.querySelector('#inhalt') || document.body;
             new MutationObserver(muts => {
                 for (let m of muts) {
                     if (m.addedNodes.length) {
                         for (let n of m.addedNodes) {
                             if (n.nodeType === 1) {
-                                if (n.classList && n.classList.contains('msg') && n.dataset.msgId) {
-                                    processMessage(n);
-                                } else if (n.querySelector) {
-                                    let msgs = n.querySelectorAll('.msg[data-msg-id]');
-                                    if (msgs.length > 0) msgs.forEach(processMessage);
-                                }
+                                if (n.classList && n.classList.contains('msg')) processMessage(n);
+                                else if (n.querySelectorAll) n.querySelectorAll('.msg[data-msg-id]').forEach(processMessage);
                             }
                         }
                     }
                 }
             }).observe(contentArea, { childList: true, subtree: true });
-
-            // Initial scan in case they are already on the screen
             document.querySelectorAll('.msg[data-msg-id]').forEach(processMessage);
         }
 
