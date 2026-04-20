@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.34
+// @version      1.35
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/game/*
@@ -653,9 +653,7 @@
                 if (!GameState.beeped) {
                     GameState.beeped = true;
 
-                    // Only trigger the background scrape if the arriving fleet is actually an Expedition (Mission 15)
-                    let missionIcon = timerElement.closest('tr')?.querySelector('.flight.mission_15') || document.querySelector('.eventFleet.mission_15');
-                    if (missionIcon && typeof GameState.triggerBackgroundScrape === 'function') {
+                    if (typeof GameState.triggerBackgroundScrape === 'function') {
                         setTimeout(GameState.triggerBackgroundScrape, 3000);
                     }
                 }
@@ -1645,6 +1643,15 @@
             let msgId = msgNode.dataset.msgId;
             if (!msgId || trackedIds.has(msgId)) return;
 
+            let rawData = msgNode.querySelector('.rawMessageData');
+            let title = msgNode.querySelector('.msg_title')?.textContent || "";
+
+            let isExpo = (rawData && rawData.hasAttribute('data-raw-expeditionresult')) || 
+                         msgNode.querySelector('.mission_15, .icon_fleet_15') || 
+                         /Expedi|Eksped|Ke[sş]if/i.test(title);
+                         
+            if (!isExpo) return;
+
             trackedIds.add(msgId);
 
             let arr = Array.from(trackedIds);
@@ -1654,12 +1661,6 @@
                 arr.forEach(id => trackedIds.add(id));
             }
             localStorage.setItem(PREF + "trackedExpoIds", JSON.stringify(arr));
-
-            let rawData = msgNode.querySelector('.rawMessageData');
-
-            // Universal Expedition check via data attributes or icons
-            let isExpo = (rawData && rawData.hasAttribute('data-raw-expeditionresult')) || msgNode.querySelector('.mission_15, .icon_fleet_15');
-            if (!isExpo) return;
 
             let fMetal = 0, fCrystal = 0, fDeut = 0, fDM = 0;
             let fShips = 0;
@@ -1773,7 +1774,8 @@
             if (isScraping) return;
             isScraping = true;
             try {
-                let res = await fetch("/game/index.php?page=messages&tab=24&ajax=1", { credentials: 'include' });
+                // FIXED: Changed tab=24 to tab=22 based on your server's DOM mapping
+                let res = await fetch("/game/index.php?page=messages&tab=22&ajax=1", { credentials: 'include' });
                 let html = await res.text();
 
                 let doc = new DOMParser().parseFromString(html, "text/html");
@@ -1797,7 +1799,8 @@
                     payload.append('ajax', '1');
                     payload.append('token', tokenMatch[1]);
 
-                    await fetch("/game/index.php?page=messages&tab=24&ajax=1", {
+                    // FIXED: Also update the POST request to mark messages as read on tab=22
+                    await fetch("/game/index.php?page=messages&tab=22&ajax=1", {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
                         body: payload.toString(),
@@ -1808,7 +1811,7 @@
                 }
             } catch (e) {
                 console.error("[!] Background Expo Scrape Failed:", e);
-            } finally {isScraping = false;}
+            } finally { isScraping = false; }
         };
 
         function observeMessages() {
