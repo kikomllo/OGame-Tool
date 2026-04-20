@@ -516,7 +516,12 @@
             a.moonlink .planetBarSpaceObjectContainer { margin-top: 0px !important; height: 14px !important; }
             
             /* Size the actual moon image */
-            .icon-moon { width: 18px !important; height: 18px !important; margin-left: -8px}
+            .icon-moon { width: 18px !important; height: 18px !important; margin-left: -8px; }
+
+            /* --- RESTORED: Construction Icon & Planet List Fade-in --- */
+            a.constructionIcon { top: 29px !important; left: -2px !important; z-index: 20;}
+            #planetList:not(.custom-ready) { opacity: 0 !important; visibility: hidden !important; }
+            #planetList.custom-ready { opacity: 1 !important; visibility: visible !important; transition: opacity 0.15s ease-in; }
 
             /* --- CSS RESOURCES --- */
             .my-resource-timer { position: relative; font-size: 9px; margin-top: 13px; pointer-events: none; }
