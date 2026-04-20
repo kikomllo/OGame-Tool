@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.33
+// @version      1.34
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/game/*
@@ -219,7 +219,7 @@
 
                 const tokenRegex = /token\s*=\s*["']([^"'\s><]{20,})["']/i;
                 const match = htmlText.match(tokenRegex);
-                
+
                 if (match && match[1]) {
                     state.token = match[1];
                 } else {
@@ -284,7 +284,7 @@
             207: { name: "Battleship", base: 10000, cargo: 1500, drive: "hyperspaceDrive" },
             208: { name: "Colony Ship", base: 2500, cargo: 7500, drive: "impulse" },
             209: { name: "Recycler", base: 2000, cargo: 20000, drive: "combustion", upgrade1: { type: "impulse", level: 17, newBase: 4000 }, upgrade2: { type: "hyperspaceDrive", level: 15, newBase: 6000 } },
-            210: { name: "Espionage Probe", base: 100000000, cargo: 5, drive: "combustion" }, 
+            210: { name: "Espionage Probe", base: 100000000, cargo: 5, drive: "combustion" },
             211: { name: "Bomber", base: 4000, cargo: 500, drive: "impulse", upgrade: { type: "hyperspaceDrive", level: 8, newBase: 5000 } },
             213: { name: "Destroyer", base: 5000, cargo: 2000, drive: "hyperspaceDrive" },
             214: { name: "Deathstar", base: 100, cargo: 1000000, drive: "hyperspaceDrive" },
@@ -450,20 +450,20 @@
             for (let speed = 10; speed <= 100; speed += 10) {
                 for (let t of targets) {
                     let roundTrip = this.getFlightTime(t.dist, slowestShipSpeed, speed, speedType) * 2;
-                    
+
                     if (roundTrip >= targetTimeSeconds) {
                         if (roundTrip < bestResult.time) {
                             bestResult = { time: roundTrip, g: t.g, s: t.s, p: t.p, speed: speed, type: tType };
                         }
-                        
+
                         if (roundTrip - targetTimeSeconds <= 60) {
                             perfectMatchFound = true;
                         }
-                        
+
                         break;
                     }
                 }
-                if (perfectMatchFound) break; 
+                if (perfectMatchFound) break;
             }
 
             if (!perfectMatchFound && bestResult.time === Infinity) {
@@ -484,7 +484,8 @@
     const injectGlobalCSS = () => {
         let css = `
             /* --- FLEET PANEL --- */
-            #customPanel, #fsPanel { position: absolute; z-index: 99999; background-color: #161b23EE; border: 1px solid #455266; color: white; padding: 15px; width: auto; height: auto; border-radius: 4px; box-shadow: 4px 4px 10px rgba(0,0,0,0.8); display: none; }
+            #customPanel, #fsPanel, #expoLogPanel { position: absolute; z-index: 99999; background-color: #161b23EE; border: 1px solid #455266; color: white; padding: 15px; width: auto; height: auto; border-radius: 4px; box-shadow: 4px 4px 10px rgba(0,0,0,0.8); display: none; }
+            #expoLogPanel h3 { margin-top: 0; border-bottom: 1px solid #455266; padding-bottom: 5px; text-align: center; color: #ff9600; font-size: 14px; margin-bottom: 10px; }
             #customPanel h3, #fsPanel h3 { margin-top: 0; border-bottom: 1px solid #455266; padding-bottom: 5px; text-align: center; color: #ff9600; font-size: 14px; }
             #expoTable { list-style: none; padding: 0; margin: 0; }
             .expo-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -504,17 +505,17 @@
             .planetBarSpaceObjectContainer { justify-content: flex-start !important; height: 20px !important; margin-top: 10px !important; }
             .smallplanet { height: 50px !important; width: 140px !important; position: relative !important; }
             .planet-name { margin-right: auto !important; margin-left: 5px !important; text-align: left !important; display: inline-block !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 60px !important; }
-            
+
             /* Planet & Moon Z-Index and Sizing Fixes */
             a.planetlink { position: relative !important; z-index: 5 !important; }
             .planetPic { width: 30px !important; height: 30px !important; padding-right: 5px; }
-            
+
             /* Pop the moon link out of flow and REMOVE NATIVE PADDING */
             a.moonlink { width: 18px !important; height: 18px !important; padding: 0 !important; position: absolute !important; top: 27px !important; left: 15px !important; z-index: 10 !important; }
-            
+
             /* Prevent the global container override from breaking the moon's inner container */
             a.moonlink .planetBarSpaceObjectContainer { margin-top: 0px !important; height: 14px !important; }
-            
+
             /* Size the actual moon image */
             .icon-moon { width: 18px !important; height: 18px !important; margin-left: -8px; }
 
@@ -559,7 +560,7 @@
 
     injectGlobalCSS();
 
-    //  --- MODULE: ALERTS (AlertsScript) --- 
+    //  --- MODULE: ALERTS (AlertsScript) ---
     function AlertsScript() {
         function initAudioContext() {
             if (!GameState.audioCtx) GameState.audioCtx = new(gameWindow.AudioContext || gameWindow.webkitAudioContext)();
@@ -649,8 +650,18 @@
             let timeText = timerElement.textContent.trim();
             if (!/^(?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s)?$/.test(timeText) && timeText) {
                 fleetAlert();
-                if (!GameState.beeped) GameState.beeped = true;
-            } else GameState.beeped = false;
+                if (!GameState.beeped) {
+                    GameState.beeped = true;
+
+                    // Only trigger the background scrape if the arriving fleet is actually an Expedition (Mission 15)
+                    let missionIcon = timerElement.closest('tr')?.querySelector('.flight.mission_15') || document.querySelector('.eventFleet.mission_15');
+                    if (missionIcon && typeof GameState.triggerBackgroundScrape === 'function') {
+                        setTimeout(GameState.triggerBackgroundScrape, 3000);
+                    }
+                }
+            } else {
+                GameState.beeped = false;
+            }
         }
 
         function checkAuctionEvents() {
@@ -658,7 +669,7 @@
 
             if (GameState.auction.shadowEndTime > 0){
                 let s = Math.max(0, Math.floor((GameState.auction.shadowEndTime - now) / 1000));
-                
+
                 if (s <= 150) {
                     if (!GameState.auction.hasBeeped) {
                         auctionAlert();
@@ -1149,14 +1160,14 @@
 
             const p = document.createElement("div");
             p.id = FS_PANEL_ID;
-            let c = JSON.parse(localStorage.getItem(PREF + "fsConfig")),
-                pad = n => n.toString().padStart(2, '0');
-            
+            let c = JSON.parse(localStorage.getItem(PREF + "fsConfig")) || { h: 8, m: 0, mission: "6" };
+            let pad = n => n.toString().padStart(2, '0');
+
             if (c.mission === '8') {
                 c.mission = '6';
                 localStorage.setItem(PREF + "fsConfig", JSON.stringify(c));
             }
-            
+
             p.innerHTML = `
                 <h3>Quick Fleetsave</h3>
                 <div class="fs-row"><label>Target Time:</label><input type="tel" id="fsTimeInput" class="fs-input" value="${pad(c.h)}:${pad(c.m)}" maxlength="6"></div>
@@ -1209,9 +1220,9 @@
 
             if (aBtn) {
                 e.preventDefault();
-                
+
                 const resetHtml = `<a class="tooltipRight js_hideTipOnMobile"><div class="menuImage fleetmovement ipiHintable" style="filter: hue-rotate(90deg);" data="Quick FS!"></div></a>`;
-                
+
                 let conf = JSON.parse(localStorage.getItem(PREF + "fsConfig"));
 
                 UIHelpers.flashBtn(aBtn, "LOAD", "#ff9600");
@@ -1225,7 +1236,7 @@
                 let getShip = id => state.ships[id] || 0;
                 let isValid = true,
                     eName = "";
-                
+
                 if (conf.mission === '7' && getShip(208) <= 0) {
                     isValid = false;
                     eName = "Colony Ship";
@@ -1408,7 +1419,9 @@
                 uiNodes.bid.textContent = "-";
             } else if (GameState.auction.shadowEndTime > 0 && now < GameState.auction.shadowEndTime) {
                 let s = Math.max(0, Math.floor((GameState.auction.shadowEndTime - now) / 1000));
-                uiNodes.time.textContent = `< 0${Math.floor(s / 60)}m ${s % 60}s`;
+                let mStr = Math.floor(s / 60).toString().padStart(2, '0');
+                let sStr = (s % 60).toString().padStart(2, '0');
+                uiNodes.time.textContent = `< ${mStr}m ${sStr}s`;
                 uiNodes.time.style.color = "#d43635";
             } else {
                 uiNodes.time.textContent = GameState.auction.timeText;
@@ -1454,7 +1467,7 @@
         function observePlanetList() {
             let pList = document.querySelector("#planetList");
             if (!pList || !pList.parentNode) return;
-            
+
             let timer;
             new MutationObserver(() => {
                 clearTimeout(timer);
@@ -1464,11 +1477,11 @@
                         setupPlanetList();
                     }
                 }, 50);
-            }).observe(pList.parentNode, { 
-                childList: true, 
-                subtree: true, 
-                attributes: true, 
-                attributeFilter: ['class'] 
+            }).observe(pList.parentNode, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class']
             });
         }
 
@@ -1495,8 +1508,13 @@
             let e = document.querySelector(".additional_energy_consumption"),
                 ce = document.querySelector("#resources_energy");
             if (!e || !ce) return;
+            
+            let valueNode = e.querySelector('[data-value]') || e.children[1];
+            if (!valueNode) return;
+
             let span = document.querySelector("#bonusEnergy"),
-                miss = ce.dataset.raw - e.children[1].dataset.value;
+                miss = ce.dataset.raw - valueNode.dataset.value;
+                
             if (!span) {
                 span = Object.assign(document.createElement("span"), {
                     id: "bonusEnergy",
@@ -1549,7 +1567,6 @@
         setupPlanetList();
         observePlanetList();
         waitForDrawer();
-        MasterClockQueue.push(setupPlanetList);
     }
 
     // --- MODULE: KEYBINDS (KeybindsScript) ---
@@ -1566,47 +1583,46 @@
             }
             if (e.key === Config.keybinds.refreshPage && !isT) location.reload();
             if (e.key === Config.keybinds.clearBids && isA && !isT) document.querySelectorAll(".resourceAmount").forEach(b => Helpers.typeValue(b, 0));
+            
+            // Enhanced selectors catch the buttons even if OGame changes their class names dynamically
             if (Config.keybinds.maxBids.includes(e.key) && isA && !isT) {
                 let idx = Config.keybinds.maxBids.indexOf(e.key);
-                Helpers.simulateClick(document.querySelector([".js_sliderMetalMax", ".js_sliderCrystalMax", ".js_sliderDeuteriumMax"][idx]));
+                let btn = document.querySelector([".js_sliderMetalMax, .js_payMetalMax", ".js_sliderCrystalMax, .js_payCrystalMax", ".js_sliderDeuteriumMax, .js_payDeuteriumMax"][idx]);
+                Helpers.simulateClick(btn);
             }
             if (Config.keybinds.smallBids.includes(e.key) && isA && !isT) {
                 let idx = Config.keybinds.smallBids.indexOf(e.key);
-                Helpers.simulateClick(document.querySelector([".js_sliderMetalMore", ".js_sliderCrystalMore", ".js_sliderDeuteriumMore"][idx]));
+                let btn = document.querySelector([".js_sliderMetalMore, .js_sliderMetalStep", ".js_sliderCrystalMore, .js_sliderCrystalStep", ".js_sliderDeuteriumMore, .js_sliderDeuteriumStep"][idx]);
+                Helpers.simulateClick(btn);
             }
         });
 
         MasterClockQueue.push(() => {
             if (!Helpers.isPage('traderAuctioneer')) return;
-            const h = [{
-                s: ".js_sliderMetalMax",
-                k: Config.keybinds.maxBids[0]
-            }, {
-                s: ".js_sliderCrystalMax",
-                k: Config.keybinds.maxBids[1]
-            }, {
-                s: ".js_sliderDeuteriumMax",
-                k: Config.keybinds.maxBids[2]
-            }, {
-                s: ".js_sliderMetalMore",
-                k: Config.keybinds.smallBids[0]
-            }, {
-                s: ".js_sliderCrystalMore",
-                k: Config.keybinds.smallBids[1]
-            }, {
-                s: ".js_sliderDeuteriumMore",
-                k: Config.keybinds.smallBids[2]
-            }];
-            h.forEach(x => {
-                let el = document.querySelector(x.s)?.parentElement;
-                if (el && !el.querySelector('.custom-keybind-hint')) {
-                    if (window.getComputedStyle(el).position === 'static') el.style.position = 'relative';
-                    el.appendChild(Object.assign(document.createElement("div"), {
+            
+            // Map our keybinds to multiple possible class names OGame uses depending on auction state
+            const buttons = [
+                { s: ".js_sliderMetalMax, .js_payMetalMax", k: Config.keybinds.maxBids[0] },
+                { s: ".js_sliderCrystalMax, .js_payCrystalMax", k: Config.keybinds.maxBids[1] },
+                { s: ".js_sliderDeuteriumMax, .js_payDeuteriumMax", k: Config.keybinds.maxBids[2] },
+                { s: ".js_sliderMetalMore, .js_sliderMetalStep", k: Config.keybinds.smallBids[0] },
+                { s: ".js_sliderCrystalMore, .js_sliderCrystalStep", k: Config.keybinds.smallBids[1] },
+                { s: ".js_sliderDeuteriumMore, .js_sliderDeuteriumStep", k: Config.keybinds.smallBids[2] }
+            ];
+            
+            buttons.forEach(x => {
+                let btn = document.querySelector(x.s);
+                // Inject the hint directly onto the button to avoid parent element clipping or AJAX wiping
+                if (btn && !btn.querySelector('.custom-keybind-hint')) {
+                    if (window.getComputedStyle(btn).position === 'static') btn.style.position = 'relative';
+                    btn.style.overflow = 'visible'; // Ensure the hint isn't clipped
+                    btn.appendChild(Object.assign(document.createElement("div"), {
                         className: "custom-keybind-hint",
                         textContent: x.k
                     }));
                 }
             });
+            
             document.querySelectorAll(".resourceAmount").forEach(inEl => {
                 let w = inEl.parentElement;
                 if (w && !w.querySelector('.custom-keybind-hint')) {
@@ -1619,6 +1635,278 @@
                 }
             });
         });
+    }
+
+    // --- MODULE: EXPO LOOT TRACKER (ExpoTrackerScript) ---
+    function ExpoTrackerScript() {
+        const trackedIds = new Set(JSON.parse(localStorage.getItem(PREF + "trackedExpoIds") || "[]"));
+
+        function processMessage(msgNode) {
+            let msgId = msgNode.dataset.msgId;
+            if (!msgId || trackedIds.has(msgId)) return;
+
+            trackedIds.add(msgId);
+
+            let arr = Array.from(trackedIds);
+            if (arr.length > 200) {
+                arr = arr.slice(-200);
+                trackedIds.clear();
+                arr.forEach(id => trackedIds.add(id));
+            }
+            localStorage.setItem(PREF + "trackedExpoIds", JSON.stringify(arr));
+
+            let rawData = msgNode.querySelector('.rawMessageData');
+
+            // Universal Expedition check via data attributes or icons
+            let isExpo = (rawData && rawData.hasAttribute('data-raw-expeditionresult')) || msgNode.querySelector('.mission_15, .icon_fleet_15');
+            if (!isExpo) return;
+
+            let fMetal = 0, fCrystal = 0, fDeut = 0, fDM = 0;
+            let fShips = 0;
+            let fleetDetails = {};
+
+            // 1. Scrape Resources & DM perfectly from OGame's hidden JSON attributes
+            if (rawData) {
+                let resJson = rawData.getAttribute('data-raw-resourcesgained');
+                if (resJson) {
+                    try {
+                        let resObj = JSON.parse(resJson);
+                        if (resObj.metal) fMetal = parseInt(resObj.metal, 10);
+                        if (resObj.crystal) fCrystal = parseInt(resObj.crystal, 10);
+                        if (resObj.deuterium) fDeut = parseInt(resObj.deuterium, 10);
+                        
+                        let rawDM = resObj.darkmatter || resObj.darkMatter;
+                        if (rawDM) fDM = parseInt(rawDM, 10);
+                    } catch (e) { console.error("Error parsing expo JSON", e); }
+                }
+            }
+
+            // 2. Scrape Standard Ships safely via DOM attributes (ignoring Lifeforms)
+            let lootItems = msgNode.querySelectorAll('.loot-item');
+            lootItems.forEach(item => {
+                let techIcon = item.querySelector('technology-icon');
+                let amountNode = item.querySelector('.amount');
+
+                if (techIcon && amountNode) {
+                    let amount = parseInt(amountNode.textContent.replace(/[.,]/g, ''), 10) || 0;
+
+                    // Cross-reference with our strict list of standard ships
+                    for (let i = 0; i < shipNames.length; i++) {
+                        let internalName = shipNames[i][0]; // e.g., "battleship"
+                        let shipId = shipNames[i][1];       // e.g., 207
+
+                        // If the icon has this exact boolean attribute, it's a standard ship!
+                        if (techIcon.hasAttribute(internalName)) {
+                            let displayName = AstroMath.shipSpecs[shipId].name;
+                            fShips += amount;
+                            fleetDetails[displayName] = (fleetDetails[displayName] || 0) + amount;
+                            break; // Match found, stop checking
+                        }
+                    }
+                }
+            });
+
+            let log = JSON.parse(localStorage.getItem(PREF + "expoLog") || "[]");
+
+            // Safely extract the exact in-game arrival time
+            let now = Date.now();
+            let rawTimestamp = rawData ? rawData.getAttribute('data-raw-timestamp') : null;
+
+            if (rawTimestamp) {
+                // Use OGame's hidden precise UNIX timestamp (convert to milliseconds)
+                now = parseInt(rawTimestamp, 10) * 1000;
+            } else {
+                // Fallback: parse the "DD.MM.YYYY HH:MM:SS" text from the header
+                let dateStr = msgNode.querySelector('.msgDate')?.textContent.trim();
+                if (dateStr) {
+                    let [d, t] = dateStr.split(" ");
+                    let [day, mo, yr] = d.split(".");
+                    // Convert to standard ISO format so JS Date can parse it
+                    let parsedDate = new Date(`${yr}-${mo}-${day}T${t}`).getTime();
+                    if (!isNaN(parsedDate)) now = parsedDate;
+                }
+            }
+
+            let waveWindow = 15 * 60 * 1000;
+            
+            // Search the ENTIRE log to find if a wave already exists within 15 mins of THIS message
+            let matchingWave = log.find(w => Math.abs(now - w.timestamp) <= waveWindow);
+
+            if (matchingWave) {
+                matchingWave.count++;
+                matchingWave.metal += fMetal;
+                matchingWave.crystal += fCrystal;
+                matchingWave.deuterium += fDeut;
+                matchingWave.dm += fDM;
+                matchingWave.ships += fShips;
+                for (let s in fleetDetails) {
+                    matchingWave.fleet[s] = (matchingWave.fleet[s] || 0) + fleetDetails[s];
+                }
+            } else {
+                // No matching wave found, spawn a new one
+                log.push({
+                    timestamp: now,
+                    count: 1,
+                    metal: fMetal,
+                    crystal: fCrystal,
+                    deuterium: fDeut,
+                    dm: fDM,
+                    ships: fShips,
+                    fleet: fleetDetails
+                });
+            }
+
+            // Sort newest first
+            log.sort((a, b) => b.timestamp - a.timestamp);
+            
+            // Safely keep only the 10 newest waves (slice is safer than pop if multiple waves were spawned)
+            if (log.length > 10) log = log.slice(0, 10);
+            
+            localStorage.setItem(PREF + "expoLog", JSON.stringify(log));
+            renderExpoPanel();
+
+        }
+
+        let isScraping = false;
+        
+        GameState.triggerBackgroundScrape = async () => {
+            if (isScraping) return;
+            isScraping = true;
+            try {
+                let res = await fetch("/game/index.php?page=messages&tab=24&ajax=1", { credentials: 'include' });
+                let html = await res.text();
+
+                let doc = new DOMParser().parseFromString(html, "text/html");
+                let newMsgs = doc.querySelectorAll('.msg_new[data-msg-id]');
+
+                if (newMsgs.length === 0) return;
+
+                let msgCount = 0;
+                newMsgs.forEach(msgNode => {
+                    if (!trackedIds.has(msgNode.dataset.msgId)) {
+                        processMessage(msgNode);
+                        msgCount++;
+                    }
+                });
+
+                let tokenMatch = html.match(/name=["']token["']\s+value=["']([^"'\s><]{20,})["']/i) || html.match(/token\s*=\s*["']([^"'\s><]{20,})["']/i);
+                if (tokenMatch && tokenMatch[1] && msgCount > 0) {
+                    let payload = new URLSearchParams();
+                    payload.append('messageId', '-1');
+                    payload.append('action', '103');
+                    payload.append('ajax', '1');
+                    payload.append('token', tokenMatch[1]);
+
+                    await fetch("/game/index.php?page=messages&tab=24&ajax=1", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: payload.toString(),
+                        credentials: 'include'
+                    });
+
+                    Helpers.notifyNative(`Tracked ${msgCount} new Expo(s) in background!`, false);
+                }
+            } catch (e) {
+                console.error("[!] Background Expo Scrape Failed:", e);
+            } finally {isScraping = false;}
+        };
+
+        function observeMessages() {
+            let contentArea = document.querySelector('#inhalt') || document.querySelector('#contentWrapper') || document.body;
+            new MutationObserver(muts => {
+                for (let m of muts) {
+                    if (m.addedNodes.length) {
+                        for (let n of m.addedNodes) {
+                            if (n.nodeType === 1) {
+                                if (n.classList && n.classList.contains('msg') && n.dataset.msgId) {
+                                    processMessage(n);
+                                } else if (n.querySelector) {
+                                    let msgs = n.querySelectorAll('.msg[data-msg-id]');
+                                    if (msgs.length > 0) msgs.forEach(processMessage);
+                                }
+                            }
+                        }
+                    }
+                }
+            }).observe(contentArea, { childList: true, subtree: true });
+
+            // Initial scan in case they are already on the screen
+            document.querySelectorAll('.msg[data-msg-id]').forEach(processMessage);
+        }
+
+        function renderExpoPanel() {
+            let p = document.getElementById("expoLogPanel");
+            if (!p) return;
+            let logData = JSON.parse(localStorage.getItem(PREF + "expoLog") || "[]");
+            let html = `<h3>Loot Tracker</h3><div style="max-height:300px; width: 160px; overflow-y:auto; padding-right:5px;">`;
+
+            if (logData.length === 0) html += `<div style="text-align:center; color:#8496b0; margin-top:10px; font-size:11px;">No expos tracked yet.<br>Open your messages tab!</div>`;
+
+            logData.forEach(w => {
+                let d = new Date(w.timestamp);
+                let dateStr = d.getDate().toString().padStart(2, '0') + "/" + (d.getMonth() + 1).toString().padStart(2, '0') + "/" + d.getFullYear();
+                let timeStr = d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
+
+                let lootStr = "";
+                if (w.metal > 0) lootStr += `<span class="res-m">M: ${Helpers.compactNumber.format(w.metal)}</span><br>`;
+                if (w.crystal > 0) lootStr += `<span class="res-c">C: ${Helpers.compactNumber.format(w.crystal)}</span><br>`;
+                if (w.deuterium > 0) lootStr += `<span class="res-d">D: ${Helpers.compactNumber.format(w.deuterium)}</span><br>`;
+                if (w.dm > 0) lootStr += `<span style="color:#a874ba; font-weight:bold;">DM: ${Helpers.compactNumber.format(w.dm)}</span><br>`;
+
+                if (w.ships > 0) {
+                    let fleetHover = Object.entries(w.fleet || {}).map(([k,v]) => `${k}: ${v}`).join('&#10;');
+                    lootStr += `<span class="tooltip" title="${fleetHover}" style="color:#ff9600; font-weight:bold; cursor:help;">Fleet: ${Helpers.compactNumber.format(w.ships)} ships</span><br>`;
+                }
+
+                if (lootStr === "") lootStr = `<span style="color:#d43635;">Nothing / Aliens / Pirates</span>`;
+
+                html += `
+                <div style="border-bottom: 1px dashed #344054; padding: 6px 0;">
+                    <div style="color: #fff; font-size: 11px; margin-bottom:4px;">
+                        <b>${w.count} waves</b> <span style="color:#8496b0;">[${dateStr} ~${timeStr}]</span>
+                    </div>
+                    <div style="font-size: 10px; line-height: 1.4;">${lootStr}</div>
+                </div>`;
+            });
+            html += `</div><a id="clearExpoLog" class="btn_blue" style="display:block; text-align:center; margin-top:10px; background:#d43635; border-color:#b41414;">Clear Log</a>`;
+            p.innerHTML = html;
+        }
+
+        function injectMenuButton() {
+            if (!document.querySelector("#menuTable") || document.querySelector("#customExpoLogBtn")) return;
+            const li = document.createElement("li");
+            li.innerHTML = `<span class="menu_icon"><a class="tooltipRight js_hideTipOnMobile"><div class="menuImage overview ipiHintable" data="Expo Log"></div></a></span>
+                            <a id="customExpoLogBtn" class="menubutton" href="javascript:void(0);"><span class="textlabel">Expo Log</span></a>`;
+            document.querySelector("#menuTable").appendChild(li);
+
+            const p = document.createElement("div");
+            p.id = "expoLogPanel";
+            document.body.appendChild(p);
+            renderExpoPanel();
+        }
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest("#customExpoLogBtn");
+            const p = document.getElementById("expoLogPanel");
+            const clearBtn = e.target.closest("#clearExpoLog");
+
+            if (btn) {
+                e.preventDefault();
+                ['customPanel', 'fsPanel'].forEach(id => { let el = document.getElementById(id); if (el) el.style.display = 'none'; });
+                if (p) p.style.display = p.style.display === "block" ? "none" : (p.style.top = btn.getBoundingClientRect().top + "px", p.style.left = (btn.getBoundingClientRect().right + 5) + "px", "block");
+            }
+            if (clearBtn) {
+                localStorage.setItem(PREF + "expoLog", "[]");
+                localStorage.setItem(PREF + "trackedExpoIds", "[]");
+                trackedIds.clear();
+
+                renderExpoPanel();
+            }
+            if (p && p.style.display === 'block' && !p.contains(e.target) && (!btn || !btn.contains(e.target))) p.style.display = 'none';
+        });
+
+        setTimeout(injectMenuButton, 500);
+        setTimeout(observeMessages, 1000);
     }
 
     // --- MAIN ---
@@ -1644,6 +1932,7 @@
             UtilitiesScript();
             AuctionScript();
             KeybindsScript();
+            ExpoTrackerScript();
 
             setInterval(() => {
                 for (let i = 0; i < MasterClockQueue.length; i++) {
