@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.32
+// @version      1.33
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/game/*
@@ -1454,26 +1454,21 @@
         function observePlanetList() {
             let pList = document.querySelector("#planetList");
             if (!pList || !pList.parentNode) return;
-            new MutationObserver(muts => {
-                let chg = false;
-                for (let m of muts) {
-                    if (m.addedNodes.length > 0) {
-                        for (let n of m.addedNodes) {
-                            if (n.nodeType === 1 && (n.id === 'planetList' || n.classList.contains('smallplanet') || n.querySelector('.smallplanet'))) {
-                                chg = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (chg) break;
-                }
-                if (chg) setTimeout(() => {
+            
+            let timer;
+            new MutationObserver(() => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
                     let c = document.querySelector("#planetList");
-                    if (c && !c.classList.contains("custom-ready")) setupPlanetList();
+                    if (c && !c.classList.contains("custom-ready")) {
+                        setupPlanetList();
+                    }
                 }, 50);
-            }).observe(pList.parentNode, {
-                childList: true,
-                subtree: true
+            }).observe(pList.parentNode, { 
+                childList: true, 
+                subtree: true, 
+                attributes: true, 
+                attributeFilter: ['class'] 
             });
         }
 
@@ -1554,6 +1549,7 @@
         setupPlanetList();
         observePlanetList();
         waitForDrawer();
+        MasterClockQueue.push(setupPlanetList);
     }
 
     // --- MODULE: KEYBINDS (KeybindsScript) ---
