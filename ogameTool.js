@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.30
+// @version      1.31
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/game/*
@@ -503,6 +503,7 @@
             .planetBarSpaceObjectHighlightContainer { width: 23px !important; height: 23px !important; margin-left: 3.5px !important; margin-right: 10px !important; }
             .planetBarSpaceObjectContainer { justify-content: flex-start !important; height: 20px !important; margin-top: 10px !important; }
             .smallplanet { height: 50px !important; width: 140px !important; position: relative !important; }
+            .planet-name { margin-right: auto !important; margin-left: 5px !important; text-align: left !important; display: inline-block !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 60px !important; }
             
             /* Planet & Moon Z-Index and Sizing Fixes */
             a.planetlink { position: relative !important; z-index: 5 !important; }
