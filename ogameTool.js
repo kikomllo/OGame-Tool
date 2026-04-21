@@ -1261,18 +1261,43 @@
                     p: parseInt(cMatch[2], 10)
                 };
 
+                // --- FIXED SHIP GATHERING ---
                 let slowSpd = Infinity,
                     pShips = {},
                     tShips = 0;
+
+                // We loop through ALL ship IDs defined in your shipNames list
+                // This ensures Colony Ships (208) and Recyclers (209) are included
                 shipNames.forEach(s => {
-                    let c = getShip(s[1]);
-                    if (c > 0) {
-                        pShips[s[1]] = c;
-                        tShips += c;
-                        let sp = AstroMath.getShipSpeed(s[1]);
+                    let shipId = s[1];
+                    let count = getShip(shipId);
+                    
+                    if (count > 0) {
+                        pShips[shipId] = count;
+                        tShips += count;
+                        
+                        // Calculate speed to find the slowest ship for the flight timer
+                        let sp = AstroMath.getShipSpeed(shipId);
                         if (sp > 0 && sp < slowSpd) slowSpd = sp;
                     }
                 });
+
+                let recCount = getShip(209);
+                if (recCount > 0 && !pShips[209]) {
+                    pShips[209] = recCount;
+                    tShips += recCount;
+                    let sp = AstroMath.getShipSpeed(209);
+                    if (sp < slowSpd) slowSpd = sp;
+                }
+
+                let colonyCount = getShip(208);
+                if (colonyCount > 0 && !pShips[208]) {
+                    pShips[208] = colonyCount;
+                    tShips += colonyCount;
+                    let sp = AstroMath.getShipSpeed(208);
+                    if (sp < slowSpd) slowSpd = sp;
+                }
+                
                 if (tShips === 0) {
                     Helpers.notifyNative("Fleetsave canceled: No ships on planet.", true);
                     UIHelpers.flashBtn(aBtn, "ERR!", "#b41414", resetHtml);
