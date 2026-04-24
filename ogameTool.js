@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OGame Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.37
+// @version      1.38
 // @description  My First Script, hope you enjoy!
 // @author       You
 // @match        *://*.ogame.gameforge.com/game/*
@@ -1607,7 +1607,6 @@
             if (e.key === Config.keybinds.refreshPage && !isT) location.reload();
             if (e.key === Config.keybinds.clearBids && isA && !isT) document.querySelectorAll(".resourceAmount").forEach(b => Helpers.typeValue(b, 0));
             
-            // Enhanced selectors catch the buttons even if OGame changes their class names dynamically
             if (Config.keybinds.maxBids.includes(e.key) && isA && !isT) {
                 let idx = Config.keybinds.maxBids.indexOf(e.key);
                 let btn = document.querySelector([".js_sliderMetalMax, .js_payMetalMax", ".js_sliderCrystalMax, .js_payCrystalMax", ".js_sliderDeuteriumMax, .js_payDeuteriumMax"][idx]);
@@ -1623,7 +1622,6 @@
         MasterClockQueue.push(() => {
             if (!Helpers.isPage('traderAuctioneer')) return;
             
-            // Map our keybinds to multiple possible class names OGame uses depending on auction state
             const buttons = [
                 { s: ".js_sliderMetalMax, .js_payMetalMax", k: Config.keybinds.maxBids[0] },
                 { s: ".js_sliderCrystalMax, .js_payCrystalMax", k: Config.keybinds.maxBids[1] },
@@ -1635,14 +1633,17 @@
             
             buttons.forEach(x => {
                 let btn = document.querySelector(x.s);
-                // Inject the hint directly onto the button to avoid parent element clipping or AJAX wiping
-                if (btn && !btn.querySelector('.custom-keybind-hint')) {
-                    if (window.getComputedStyle(btn).position === 'static') btn.style.position = 'relative';
-                    btn.style.overflow = 'visible'; // Ensure the hint isn't clipped
-                    btn.appendChild(Object.assign(document.createElement("div"), {
-                        className: "custom-keybind-hint",
-                        textContent: x.k
-                    }));
+                if (btn) {
+                    let parent = btn.parentElement;
+                    if (parent && !parent.querySelector('.custom-keybind-hint')) {
+                        if (window.getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+                        
+                        parent.appendChild(Object.assign(document.createElement("div"), {
+                            className: "custom-keybind-hint",
+                            textContent: x.k.toUpperCase(),
+                            style: "text-indent: 0 !important; font-size: 10px !important; letter-spacing: normal !important; text-transform: uppercase; pointer-events: none;"
+                        }));
+                    }
                 }
             });
             
@@ -1652,8 +1653,8 @@
                     if (window.getComputedStyle(w).position === 'static') w.style.position = 'relative';
                     w.appendChild(Object.assign(document.createElement("div"), {
                         className: "custom-keybind-hint",
-                        textContent: Config.keybinds.clearBids,
-                        style: "background-color:#d43635; color:white;"
+                        textContent: Config.keybinds.clearBids.toUpperCase(),
+                        style: "background-color:#d43635; color:white; text-indent: 0 !important; font-size: 10px !important; pointer-events: none;"
                     }));
                 }
             });
@@ -1662,14 +1663,16 @@
 
     // --- MODULE: EXPO LOOT TRACKER (ExpoTrackerScript) ---
     function ExpoTrackerScript() {
-        const trackedIds = new Set(JSON.parse(localStorage.getItem(PREF + "trackedExpoIds") || "[]"));
+        const getTrackedIds = () => new Set(JSON.parse(localStorage.getItem(PREF + "trackedExpoIds") || "[]"));
 
         function processMessage(msgNode) {
             let msgId = msgNode.dataset.msgId;
+            let trackedIds = getTrackedIds();
+            
             if (!msgId || trackedIds.has(msgId)) return;
 
             let rawData = msgNode.querySelector('.rawMessageData');
-            let title = msgNode.querySelector('.msgTitle')?.textContent || ""; // OGame updated class name
+            let title = msgNode.querySelector('.msgTitle')?.textContent || "";
 
             let isExpo = (rawData && rawData.hasAttribute('data-raw-expeditionresult')) || 
                          msgNode.querySelector('.mission_15, .icon_fleet_15') || 
@@ -1680,15 +1683,12 @@
             trackedIds.add(msgId);
 
             let arr = Array.from(trackedIds);
-            if (arr.length > 500) { // Increased to 500 to accommodate more waves
+            if (arr.length > 500) {
                 arr = arr.slice(-500);
-                trackedIds.clear();
-                arr.forEach(id => trackedIds.add(id));
             }
             localStorage.setItem(PREF + "trackedExpoIds", JSON.stringify(arr));
 
-            let fMetal = 0, fCrystal = 0, fDeut = 0, fDM = 0;
-            let fShips = 0;
+            let fMetal = 0, fCrystal = 0, fDeut = 0, fDM = 0, fShips = 0;
             let fleetDetails = {};
 
             // 1. Scrape Resources & DM
@@ -1744,15 +1744,13 @@
                 }
             } else {
                 log.push({
-                    timestamp: now,
-                    count: 1,
-                    metal: fMetal, crystal: fCrystal, deuterium: fDeut, dm: fDM, ships: fShips,
-                    fleet: fleetDetails
+                    timestamp: now, count: 1, metal: fMetal, crystal: fCrystal, deuterium: fDeut, dm: fDM, ships: fShips, fleet: fleetDetails
                 });
             }
 
             log.sort((a, b) => b.timestamp - a.timestamp);
             if (log.length > 10) log = log.slice(0, 10);
+            
             localStorage.setItem(PREF + "expoLog", JSON.stringify(log));
         }
 
@@ -1779,14 +1777,13 @@
                 if (data.messages && Array.isArray(data.messages)) {
                     let msgCount = 0;
                     const parser = new DOMParser();
+                    const freshTrackedIds = getTrackedIds();
 
                     data.messages.forEach(htmlFragment => {
-                        // 1. REGEX PRE-FILTER: Extract ID without parsing full DOM
                         const idMatch = htmlFragment.match(/data-msg-id=["'](\d+)["']/);
                         const msgId = idMatch ? idMatch[1] : null;
 
-                        // 2. Only parse if it's a new ID
-                        if (msgId && !trackedIds.has(msgId)) {
+                        if (msgId && !freshTrackedIds.has(msgId)) {
                             let doc = parser.parseFromString(htmlFragment, "text/html");
                             let msgNode = doc.querySelector('.msg[data-msg-id]');
                             if (msgNode) {
@@ -1797,13 +1794,10 @@
                     });
 
                     if (msgCount > 0) {
-                        renderExpoPanel(); // Render once for the whole wave
+                        renderExpoPanel();
                         Helpers.notifyNative(`Wave Update: ${msgCount} new report(s) captured.`, false);
                         
-                        // Safety sweep: If we expected 6 but got fewer, check again in 30s
-                        if (msgCount < 6) {
-                            setTimeout(GameState.triggerBackgroundScrape, 30000);
-                        }
+                        if (msgCount < 6) setTimeout(GameState.triggerBackgroundScrape, 30000);
                     }
                 }
             } catch (e) {
@@ -1881,6 +1875,13 @@
             renderExpoPanel();
         }
 
+        // --- CROSS-TAB SYNC ---
+        window.addEventListener('storage', (e) => {
+            if (e.key === PREF + "expoLog") {
+                renderExpoPanel();
+            }
+        });
+
         document.addEventListener('click', (e) => {
             const btn = e.target.closest("#customExpoLogBtn");
             const p = document.getElementById("expoLogPanel");
@@ -1889,13 +1890,15 @@
             if (btn) {
                 e.preventDefault();
                 ['customPanel', 'fsPanel'].forEach(id => { let el = document.getElementById(id); if (el) el.style.display = 'none'; });
+                
+                // ALWAYS render fresh data right before opening the panel
+                renderExpoPanel(); 
+                
                 if (p) p.style.display = p.style.display === "block" ? "none" : (p.style.top = btn.getBoundingClientRect().top + "px", p.style.left = (btn.getBoundingClientRect().right + 5) + "px", "block");
             }
             if (clearBtn) {
                 localStorage.setItem(PREF + "expoLog", "[]");
                 localStorage.setItem(PREF + "trackedExpoIds", "[]");
-                trackedIds.clear();
-
                 renderExpoPanel();
             }
             if (p && p.style.display === 'block' && !p.contains(e.target) && (!btn || !btn.contains(e.target))) p.style.display = 'none';
